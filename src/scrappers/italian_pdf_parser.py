@@ -45,7 +45,6 @@ def scrape(filePath):
     pdf.close()
     return results
 
-
 def filter_results(results):
     filtered_results = []
     for result in results:
@@ -165,7 +164,7 @@ def build_query(results):
         # print("final query after append ",query)
         query_tuple = []
         for item in query:
-            query_tuple.append(item[0])
+            query_tuple.append(item[0].split(". ")[-1].strip())
         query_tuple = tuple(query_tuple)
         final_results.append((text, size, font, link, query_tuple))
     return final_results
@@ -241,7 +240,7 @@ def obtain_paragraphs(results):
 
 
 def make_csv(results):
-    csv_file_output =  os.path.join("output","english.csv")
+    csv_file_output =  os.path.join("output","italian", "english.csv")
     with open(csv_file_output, mode='w', newline='') as file:
         writer = csv.writer(file,delimiter='|')
         writer.writerows(results)  
@@ -266,7 +265,7 @@ def convert_to_json(final_result, file_name = "results.json"):
         
 
 if __name__ == "__main__":
-    raw_data_path = "raw_data/english"
+    raw_data_path = "raw_data/italian"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(raw_data_path):
         for filename in filenames:
@@ -296,22 +295,22 @@ if __name__ == "__main__":
         # print(relevant_results_triplet[0:3])
         text_file_output =  os.path.join("output","italian","results2.txt")           
         with open(text_file_output, "w+") as file:
-            for result in filtered_results:
+            for result in final_result:
                 # if result[3] in "https://hudoc.echr.coe.int/eng?i=001-105606":
-                file.write(f"Query: {result[4]}, Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+                # file.write(f"Query: {result[4]}, Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
                 # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
-                # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}n")
-                    # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+                file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}n")
+                # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
                 # file.write("\n")
         # make_csv(final_result)
     #     print("number of obtained query, case, paragraph triplets : ",len(final_result))
-    #     number_of_results.append(f"Number of results in {file_name} = {len(final_result)}")
-    #     convert_to_json(file_name=f"{file_name}.json", final_result=final_result)
-    # number_result_file_output =  os.path.join("output","english", "english_results.txt")
+        number_of_results.append(f"Number of results in {file_name} = {len(final_result)}")
+        convert_to_json(file_name=f"{file_name}.json", final_result=final_result)
+    number_result_file_output =  os.path.join("output","english", "english_results.txt")
     
-    # with open(number_result_file_output, "w+") as file:
-    #         for result in number_of_results:
-    #             file.write(f"{result}\n")
-    #     #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
-    #     #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
-    #     #         # file.write("\n")
+    with open(number_result_file_output, "w+") as file:
+            for result in number_of_results:
+                file.write(f"{result}\n")
+        #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+        #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
+        #         # file.write("\n")
