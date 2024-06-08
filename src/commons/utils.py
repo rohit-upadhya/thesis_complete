@@ -69,9 +69,9 @@ def extract_paragraphs_from_sentences(id, paragraph, docs):
         print(id)
         flag = 0
         for doc in sentences:
-            if f"{paragraph}. " in doc:
+            if f"{paragraph}. " in doc[:5]:
                 flag = 1
-            elif f"{paragraph+1}. " in doc and flag==1:
+            elif f"{paragraph+1}. " in doc[:5] and flag==1:
                 break
             if flag == 1:
                 paragraphs.append(doc)
@@ -123,7 +123,7 @@ def extract_paragraphs_within_class(html_content, target_class, target_string):
     for p in paragraphs:
         text = p.get_text()
         p_class = p.get('class', [])
-        if f"{target_string}." in text and target_class in p_class:
+        if f"{target_string}." in text[:5] and target_class in p_class:
             capture = True
         if capture:
             results.append(text)
