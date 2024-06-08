@@ -25,20 +25,30 @@ def extract_paragraph_numbers(text):
     Extract numbers following the § symbol from the given text.
     Handles both single numbers and ranges (e.g., §§ 26-32).
     """
-    paragraph_numbers = []
+    # paragraph_numbers = []
 
     # Regular expression to find patterns like § 26 or §§ 26-32
     pattern = re.compile(r'§{1,2}\s*(\d+)(?:-(\d+))?')
+    match = pattern.search(text)
+    if match:
+        start = int(match.group(1))
+        end = int(match.group(2)) if match.group(2) else start
 
-    matches = pattern.findall(text)
-    for match in matches:
-        start = int(match[0])
-        end = int(match[1]) if match[1] else start
+        # Return all numbers in the range as a list
+        return list(range(start, end + 1))
 
-        # Add all numbers in the range to the list
-        paragraph_numbers.extend(range(start, end + 1))
+    return []
+    # pattern = re.compile(r'§{1,2}\s*(\d+)(?:-(\d+))?')
 
-    return paragraph_numbers
+    # matches = pattern.findall(text)
+    # for match in matches:
+    #     start = int(match[0])
+    #     end = int(match[1]) if match[1] else start
+
+    #     # Add all numbers in the range to the list
+    #     paragraph_numbers.extend(range(start, end + 1))
+
+    # return paragraph_numbers
 
 def extract_paragraphs_from_sentences(id, paragraph, docs):
     
@@ -143,8 +153,8 @@ def find_overlapping_paragraphs(paragraphs1, paragraphs2, threshold=0.7):
 def capture_paragraphs(id, paragraph_no, docs):
     html_paragraph = extract_paragraph_from_html(id, paragraph_no, docs)
     sentence_paragraphs = extract_paragraphs_from_sentences(id, paragraph_no, docs)
-    print("html_paragraph : ",html_paragraph)
-    print("sentence_paragraphs : ",sentence_paragraphs)
+    # print("html_paragraph : ",html_paragraph)
+    # print("sentence_paragraphs : ",sentence_paragraphs)
     if len(html_paragraph) == 0:
         return sentence_paragraphs
     if len(sentence_paragraphs) == 0:

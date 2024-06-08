@@ -2,6 +2,7 @@ import os
 import fitz  # PyMuPDF
 from src.commons import utils
 import csv
+import json
 
 def normalize_link(link):
     if link and link.startswith('http:'):
@@ -102,7 +103,6 @@ def remove_comma(results):
         if not (len(result[0]) > 1 or result[3] is not None):
             print(result)
         if (len(result[0]) > 1) or result[3] is not None:
-            
             final_results.append(result)
     return final_results
 
@@ -172,10 +172,12 @@ def build_query(results):
     for result in results:
         text, size, font, link = result
         if size > 11.5:
-            while(len(query)>0 and size >= query[-1][1]):
+            while(len(query)>0 and utils.truncate_to_one_decimal(size) >= utils.truncate_to_one_decimal(query[-1][1])):
                 query.pop()
             query.append([text, size])
-        query_tuple = tuple(query)
+        query_tuple = []
+        for item in query:
+            query_tuple.append(item[0])
         final_results.append((text, size, font, link, query_tuple))
     return final_results
 
@@ -199,16 +201,17 @@ def obtain_paragraph_numbers(results):
     return final_result
 
 def obtain_paragraphs(results):
-    docs  = utils.capture_paragraph()
+    docs  = utils.get_mongo_docs()
     final_results = []
     for result in results:
         text, size, font, link, query, para_nums = result
         paragraphs = []
         id = link.split("i=")[1]
+        case_heading = utils.capture_case_heading(id, docs)
         for paragraph_number in para_nums:
-            paragraph = utils.capture_paragrahs(id, paragraph_number, docs)
+            paragraph = utils.capture_paragraphs(id, paragraph_number, docs)
             paragraphs.append(paragraph)
-        final_results.append((text,size,font,link, query, para_nums, paragraphs))
+        final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading))
     return final_results
 
 
@@ -218,6 +221,52 @@ def make_csv(results):
         writer = csv.writer(file,delimiter='|')
         writer.writerows(results)  
 
+def combine_paragraph_numbers(results):
+    combined_results = {}
+
+    for result in results:
+        text, size, font, link, query, para_nums = result
+        # Convert inner lists to tuples for the key
+        query_key = tuple(tuple(item) if isinstance(item, list) else item for item in query)
+        key = (query_key, link)
+        # Store the original query format and other details
+        if key not in combined_results:
+            combined_results[key] = {'texts': [], 'para_nums': set(), 'size': size, 'font': font, 'original_query': query}
+        combined_results[key]['texts'].append(text)
+        combined_results[key]['para_nums'].update(para_nums)
+    
+    final_results = []
+    for key, value in combined_results.items():
+        query_key, link = key
+        combined_text = ' '.join(value['texts'])
+        size = value['size']
+        font = value['font']
+        para_nums = sorted(value['para_nums'])
+        # Convert query back to list of lists
+        original_query = [list(item) if isinstance(item, tuple) else item for item in value['original_query']]
+        original_query = tuple(original_query)
+        final_results.append((combined_text, size, font, link, original_query, para_nums))
+    
+    return final_results
+
+def convert_to_json(final_result, file_name = "results.json"):
+    # Define the output JSON structure
+    json_result = []
+    for result in final_result:
+        entry = {
+            "query": result[4],
+            "case_name": result[7],
+            "paragrpahs": result[6],
+            "paragraph_numbers": result[5],
+            "link": result[3],
+        }
+        json_result.append(entry)
+
+    # Write the JSON object to a file
+    file_name = os.path.join("output", "turkish", file_name)
+    with open(file_name, "w") as file:
+        json.dump(json_result, file, ensure_ascii=False, indent=4)
+        
 if __name__ == "__main__":
     raw_data_path = "raw_data/turkish"
     files = []
@@ -225,31 +274,46 @@ if __name__ == "__main__":
         for filename in filenames:
             if "pdf" in filename:
                 files.append(os.path.join(dirpath, filename))
-    
+    number_of_results = []
     print(files)
-    results = scrape(files[0])
-    filtered_results = filter_results(results=results)
-    combined_links = combine_adjacent_entries_with_same_link(results=filtered_results)
-    removed_arial = remove_arial(combined_links)
-    remove_commas = remove_comma(removed_arial)
-    combined_size = combine_adjacent_entries_with_same_size(results=remove_commas)
-    seperate_links = separate_links(combined_size)
-    combined_results = combine_entries_with_section(seperate_links)
-    results_with_query = build_query(combined_results)
-    relevant_results = filter_out_links_para(results_with_query)
-    relevant_results_with_para_num = obtain_paragraph_numbers(relevant_results)
-    # final_result = obtain_paragraphs(relevant_results_with_para_num)
+    for file in files:
+        file_name = file.split("/")[-1].split(".pdf")[0]
+        results = scrape(file)
+        filtered_results = filter_results(results=results)
+        combined_links = combine_adjacent_entries_with_same_link(results=filtered_results)
+        removed_arial = remove_arial(combined_links)
+        remove_commas = remove_comma(removed_arial)
+        combined_size = combine_adjacent_entries_with_same_size(results=remove_commas)
+        seperate_links = separate_links(combined_size)
+        combined_results = combine_entries_with_section(seperate_links)
+        results_with_query = build_query(combined_results)
+        relevant_results = filter_out_links_para(results_with_query)
+        relevant_results_with_para_num = obtain_paragraph_numbers(relevant_results)
+        relevant_results_triplet = combine_paragraph_numbers(relevant_results_with_para_num)
+        final_result = obtain_paragraphs(relevant_results_triplet)
+        # final_result = obtain_paragraphs(relevant_results_with_para_num)
+        
+        # for result in final_results:
+        #     text, size, font, link = result
+        #     if link is None:
+        #         if "§" in text:
+        #             print(result)
+        # text_file_output =  os.path.join("output","turkish_results.txt")           
+        # with open(text_file_output, "w+") as file:
+        #     for result in relevant_results_with_para_num:
+        #         file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+        #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+        #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
+        #         # file.write("\n")
+        # # make_csv(final_result)
+        print("number of obtained query, case, paragraph triplets : ",len(final_result))
+        number_of_results.append(f"Number of results in {file_name} = {len(final_result)}")
+        convert_to_json(file_name=f"{file_name}.json",final_result=final_result)
+    number_result_file_output =  os.path.join("output","turkish_results.txt")
     
-    # for result in final_results:
-    #     text, size, font, link = result
-    #     if link is None:
-    #         if "§" in text:
-    #             print(result)
-    text_file_output =  os.path.join("output","turkish_results.txt")           
-    with open(text_file_output, "w+") as file:
-        for result in relevant_results_with_para_num:
-            file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
-            # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
-            # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
-            # file.write("\n")
-    # make_csv(final_result)
+    with open(number_result_file_output, "w+") as file:
+            for result in number_of_results:
+                file.write(f"{result}\n")
+        #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+        #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
+        #         # file.write("\n")
