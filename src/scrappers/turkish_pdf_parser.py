@@ -100,8 +100,8 @@ def remove_arial(results):
 def remove_comma(results):
     final_results = []
     for result in results:
-        if not (len(result[0]) > 1 or result[3] is not None):
-            print(result)
+        # if not (len(result[0]) > 1 or result[3] is not None):
+        #     print(result)
         if (len(result[0]) > 1) or result[3] is not None:
             final_results.append(result)
     return final_results
@@ -177,7 +177,7 @@ def build_query(results):
             query.append([text, size])
         query_tuple = []
         for item in query:
-            query_tuple.append(item[0])
+            query_tuple.append(item[0].split(". ")[-1].strip())
         final_results.append((text, size, font, link, query_tuple))
     return final_results
 
@@ -274,7 +274,6 @@ if __name__ == "__main__":
         for filename in filenames:
             if "pdf" in filename:
                 files.append(os.path.join(dirpath, filename))
-    number_of_results = []
     print(files)
     for file in files:
         file_name = file.split("/")[-1].split(".pdf")[0]
@@ -306,14 +305,13 @@ if __name__ == "__main__":
         #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
         #         # file.write("\n")
         # # make_csv(final_result)
-        print("number of obtained query, case, paragraph triplets : ",len(final_result))
-        number_of_results.append(f"Number of results in {file_name} = {len(final_result)}")
+        # print("number of obtained query, case, paragraph triplets : ",len(final_result))
         convert_to_json(file_name=f"{file_name}.json",final_result=final_result)
-    number_result_file_output =  os.path.join("output", "turkish", "turkish_results.txt")
+        number_result_file_output =  os.path.join("output", "turkish", "turkish_results.txt")
+        with open(number_result_file_output, "a+") as file:
+            file.write(f"Number of results in {file_name} = {len(final_result)} \n")
+
     
-    with open(number_result_file_output, "w+") as file:
-            for result in number_of_results:
-                file.write(f"{result}\n")
         #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
         #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
         #         # file.write("\n")

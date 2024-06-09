@@ -322,11 +322,11 @@ if __name__ == "__main__":
     #     print("number of obtained query, case, paragraph triplets : ",len(final_result))
         number_of_results.append(f"Number of results in {file_name} = {len(final_result)}")
         convert_to_json(file_name=f"{file_name}.json", final_result=final_result)
-    number_result_file_output =  os.path.join("output","romaninan", "english_results.txt")
+        number_result_file_output =  os.path.join("output","romaninan", "romanian_results.txt")
+        with open(number_result_file_output, "a+") as file:
+            file.write(f"Number of results in {file_name} = {len(final_result)}")
     
-    with open(number_result_file_output, "w+") as file:
-            for result in number_of_results:
-                file.write(f"{result}\n")
+    
         #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
         #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
         #         # file.write("\n")
