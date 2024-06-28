@@ -50,9 +50,11 @@ def extract_paragraph_numbers(text):
 
     # return paragraph_numbers
 
-def extract_paragraphs_from_sentences(id, paragraph, docs):
+def extract_paragraphs_from_sentences(id, paragraph_no, docs):
     
-    document = docs.find_one({'_id': id})
+    # document = docs.find_one({'_id': id})
+    document = docs.get(id)
+    # document = create_para_sub_para(document=document)
     # for key in document.keys():
     #         print(key)
     # docs = docs.aggregate([{ '$sample': { 'size': 2 } }])
@@ -62,24 +64,65 @@ def extract_paragraphs_from_sentences(id, paragraph, docs):
             return []
         
         sentences = document["sentences"]
-        text_file_output =  os.path.join("output","english","sentences.txt")   
-        with open(text_file_output, "w+") as file:
-            for result in sentences:
-                file.write(f"{result} \n\n")
         print(id)
         flag = 0
-        for doc in sentences:
-            if f"{paragraph}. " in doc[:5]:
-                flag = 1
-            elif f"{paragraph+1}. " in doc[:5] and flag==1:
-                break
-            if flag == 1:
-                paragraphs.append(doc)
-        return paragraphs
-    except Exception as e:
-        print(f"Paragraph not present for this id {id}")
-        return []
+        i = 0
         
+        while i < len(sentences):
+            if "PROCEDURE".lower() in sentences[i].lower():
+                i += 1
+                break
+            i += 1
+        j = 0
+        
+        while j < len(sentences[i:]):
+            if "FOR THESE REASONS, THE COURT".upper() in sentences[j].upper():
+                j += 1
+                break
+            j += 1
+        
+        sentences = create_para_sub_para(sentences=sentences[i:j+1])
+        file_name = f"src/commons/test/{id}.txt"
+        with open(file_name, "w+") as file:
+            for sen in sentences:
+                file.write(f"{len(sen)} \t{sen} \n\n\n")
+        # for doc in sentences:
+        #     if f"{paragraph}. " in doc[:5] :
+        #         flag = 1
+        #     elif f"{paragraph+1}. " in doc[:5] and flag==1:
+        #         break
+        #     if flag == 1:
+        #         paragraphs.append(doc)
+        # return paragraphs
+        
+        for doc in sentences:
+            match = re.match(r'\d+', doc[0][:5])
+            # if f"{paragraph_no}. " in doc[0][:5] :
+            if int(match.group()) == paragraph_no:
+                paragraphs.append(doc)
+        return paragraphs[0]
+    except Exception as e:
+        print(f"Paragraph not present for this id : {id}")
+        return []
+
+def create_para_sub_para(sentences):
+    final_document = []
+    previous_number = 0
+    document = []
+    for sentence in sentences:
+        match = re.match(r'\d+', sentence[:5])
+        if match:
+            if int(match.group()) == previous_number + 1:
+                previous_number = int(match.group())
+                final_document.append(document)
+                document = []
+        document.append(sentence)
+    if len(document) > 0:
+        final_document.append(document)
+    
+    return final_document[1:]
+        # pass
+    
     
     # text_file_output =  os.path.join("output","db.txt")  
     # with open(text_file_output, "w+") as file:
@@ -90,7 +133,7 @@ def truncate_to_one_decimal(num):
     return int(num * 10) / 10.0
 
 def compare(num1, num2):
-    return truncate_to_one_decimal(num1) == truncate_to_one_decimal(num2)
+    return (truncate_to_one_decimal(num1) == truncate_to_one_decimal(num2)) or (abs(truncate_to_one_decimal(num1) - truncate_to_one_decimal(num2)) <0.2)
 
 def extract_paragraph_from_html(id, paragraph, docs):
     document = docs.find_one({'_id': id})
@@ -117,9 +160,6 @@ def extract_paragraphs_within_class(html_content, target_class, target_string):
 
     results = []
     capture = False
-    text_file_output =  os.path.join("output","english","html.txt")   
-    with open(text_file_output, "w+") as file:
-            file.write(f"{html_content} \n\n")
     for p in paragraphs:
         text = p.get_text()
         p_class = p.get('class', [])
@@ -159,36 +199,38 @@ def capture_paragraphs(id, paragraph_no, docs):
         return sentence_paragraphs
     if len(sentence_paragraphs) == 0:
         return html_paragraph
-    threshold = 0.85
-    overlapping_paragraphs = find_overlapping_paragraphs(html_paragraph, sentence_paragraphs, threshold)
-    paragraphs = []
-    if overlapping_paragraphs is None:
-        return []
-    for extracted, additional, similarity in overlapping_paragraphs:
-        paragraphs.append(additional)
+    # threshold = 0.85
+    # overlapping_paragraphs = find_overlapping_paragraphs(html_paragraph, sentence_paragraphs, threshold)
+    # paragraphs = []
+    # if overlapping_paragraphs is None:
+    #     return []
+    # for extracted, additional, similarity in overlapping_paragraphs:
+    #     paragraphs.append(additional)
     return sentence_paragraphs
 
 def capture_case_heading(id, docs):
     try:
-        document = docs.find_one({'_id': id})
+        # document = docs.find_one({'_id': id})
+        document = docs.get(id)
+        
         return document['docname']
     except Exception as e:
-        print(f"no doc present for id : {id}")
+        print(f"Case Heading : no doc present for id : {id}")
         return ""
 
 if __name__ == "__main__":
     docs  = get_mongo_docs()
-    paragraph = extract_paragraph_from_html("001-105606", 136, docs)
-    additional_paragraphs = extract_paragraphs_from_sentences("001-105606", 136, docs)[0]
+    paragraph = extract_paragraph_from_html("001-192804", 147, docs)
+    additional_paragraphs = extract_paragraphs_from_sentences("001-192804", 147, docs)
     
-    threshold = 0.85  # Adjust this value as needed
-    print("going to extracted now")
-    overlapping_paragraphs = find_overlapping_paragraphs(paragraph, additional_paragraphs, threshold)
+    # threshold = 0.85  # Adjust this value as needed
+    # print("going to extracted now")
+    # overlapping_paragraphs = find_overlapping_paragraphs(paragraph, additional_paragraphs, threshold)
     
-    for extracted, additional, similarity in overlapping_paragraphs:
-        print("Extracted Paragraph:", extracted)
-        print("Overlapping Additional Paragraph:", additional)
-        print("Similarity:", similarity)
-        print("\n---\n")
-    print(paragraph)
+    # for extracted, additional, similarity in overlapping_paragraphs:
+    #     print("Extracted Paragraph:", extracted)
+    #     print("Overlapping Additional Paragraph:", additional)
+    #     print("Similarity:", similarity)
+    #     print("\n---\n")
+    print(additional_paragraphs)
     

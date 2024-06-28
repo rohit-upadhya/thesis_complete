@@ -1,3 +1,4 @@
 */*/*.json
 output/*/*.txt
 raw_data/*/*df
+.DS_Store

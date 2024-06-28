@@ -14,6 +14,8 @@ def scrape(filePath):
     pdf = fitz.open(filePath)  # filePath is a string that contains the path to the pdf
 
     for page_num, page in enumerate(pdf):
+        if page_num < 3:  # Skip the first three pages (0, 1, 2)
+            continue
         # Extract text and its properties
         dict = page.get_text("dict")
         blocks = dict["blocks"]
@@ -50,12 +52,12 @@ def filter_results(results):
     filtered_results = []
     for result in results:
         text, size, font, link = result
-        if size >= 12.0 or "Calibri-Bold" in font or link is not None or "§" in text:
+        if size >= 12.0001 or link is not None or "§" in text:
             filtered_results.append(result)
     final_results = []
     for result in filtered_results:
         text, size, font, link = result
-        if (size >= 12.0 or "Calibri-Bold" in font) and link is not None:
+        if (size >= 12.0001) and link is not None:
             final_results.append((text, size, font, None))
         else:
             final_results.append(result)
@@ -100,8 +102,6 @@ def remove_arial(results):
 def remove_comma(results):
     final_results = []
     for result in results:
-        # if not (len(result[0]) > 1 or result[3] is not None):
-        #     print(result)
         if (len(result[0]) > 1) or result[3] is not None:
             final_results.append(result)
     return final_results
@@ -119,7 +119,7 @@ def combine_adjacent_entries_with_same_size(results):
     for i in range(1, len(results)):
         text, size, font, link = results[i]
 
-        if size > 11.5 and utils.compare(size, current_size): #size == current_size and size >11.5:
+        if size >= 12.0001 and utils.compare(size, current_size): #size == current_size and size >11.5:
             combined_text += " " + text
         else:
             # if current_size >11.5:
@@ -157,7 +157,7 @@ def combine_entries_with_section(results):
     i = 0
     while i < len(results):
         text, size, font, link = results[i]
-        if link is not None and i + 1 < len(results) and "§" in results[i + 1][0] and results[i + 1][3] is None:
+        if link is not None and i + 1 < len(results) and "§" in results[i + 1][0] and results[i + 1][3] is None and results[i+1][1] < 12.0001:
             combined_text = text + " " + results[i + 1][0]
             final_results.append((combined_text, size, font, link))
             i += 2  # Skip the next entry as it has been combined
@@ -171,7 +171,7 @@ def build_query(results):
     final_results = []
     for result in results:
         text, size, font, link = result
-        if size > 11.5:
+        if size >= 12.0001:
             while(len(query)>0 and utils.truncate_to_one_decimal(size) >= utils.truncate_to_one_decimal(query[-1][1])):
                 query.pop()
             query.append([text, size])
@@ -203,16 +203,19 @@ def obtain_paragraph_numbers(results):
 def obtain_paragraphs(results):
     docs  = utils.get_mongo_docs()
     final_results = []
+    heading_set = set()
     for result in results:
         text, size, font, link, query, para_nums = result
         paragraphs = []
         id = link.split("i=")[1]
         case_heading = utils.capture_case_heading(id, docs)
+        if len(case_heading) == 0:
+            heading_set.add(id)
         for paragraph_number in para_nums:
             paragraph = utils.capture_paragraphs(id, paragraph_number, docs)
             paragraphs.append(paragraph)
         final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading))
-    return final_results
+    return final_results, heading_set
 
 
 def make_csv(results):
@@ -268,14 +271,15 @@ def convert_to_json(final_result, file_name = "results.json"):
         json.dump(json_result, file, ensure_ascii=False, indent=4)
         
 if __name__ == "__main__":
-    raw_data_path = "raw_data/turkish"
+    raw_data_path = "raw_data/turkish/"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(raw_data_path):
         for filename in filenames:
             if "pdf" in filename:
                 files.append(os.path.join(dirpath, filename))
-    print(files)
+    # print(files)
     for file in files:
+        print(file)
         file_name = file.split("/")[-1].split(".pdf")[0]
         results = scrape(file)
         filtered_results = filter_results(results=results)
@@ -289,7 +293,7 @@ if __name__ == "__main__":
         relevant_results = filter_out_links_para(results_with_query)
         relevant_results_with_para_num = obtain_paragraph_numbers(relevant_results)
         relevant_results_triplet = combine_paragraph_numbers(relevant_results_with_para_num)
-        final_result = obtain_paragraphs(relevant_results_triplet)
+        final_result, headings = obtain_paragraphs(relevant_results_triplet)
         # final_result = obtain_paragraphs(relevant_results_with_para_num)
         
         # for result in final_results:
@@ -297,19 +301,40 @@ if __name__ == "__main__":
         #     if link is None:
         #         if "§" in text:
         #             print(result)
-        # text_file_output =  os.path.join("output","turkish_results.txt")           
-        # with open(text_file_output, "w+") as file:
-        #     for result in relevant_results_with_para_num:
-        #         file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
-        #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+        print("filtered_results", len(filtered_results))
+        print("combined_links", len(combined_links))
+        print("removed_arial", len(removed_arial))
+        print("remove_commas", len(remove_commas))
+        print("combined_size", len(combined_size))
+        print("seperate_links", len(seperate_links))
+        print("combined_results", len(combined_results))
+        print("results_with_query", len(results_with_query))
+        print("relevant_results", len(relevant_results))
+        print("relevant_results_with_para_num", len(relevant_results_with_para_num))
+        print("relevant_results_triplet", len(relevant_results_triplet))
+        print("unusable results : ", len(headings))
+        print("usable results : ", len(final_result) - len(headings))
+        
+        
+        
+        text_file_output =  os.path.join("output", "turkish","tests",f"turkish_results-{file_name}.txt")
+        with open(text_file_output, "w+") as file:
+            for result in results_with_query:
+                # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+                file.write(f"Query: {result[4]}, Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+                # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
         #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
         #         # file.write("\n")
         # # make_csv(final_result)
         # print("number of obtained query, case, paragraph triplets : ",len(final_result))
+        
+        
+        
+        
         convert_to_json(file_name=f"{file_name}.json",final_result=final_result)
-        number_result_file_output =  os.path.join("output", "turkish", "turkish_results.txt")
+        number_result_file_output =  os.path.join("output", "turkish", "turkish_number_results.txt")
         with open(number_result_file_output, "a+") as file:
-            file.write(f"Number of results in {file_name} = {len(final_result)} \n")
+            file.write(f"Number of results in {file_name} = {len(final_result)}\t || Usable results  = {len(final_result) - len(headings)}\n")
 
     
         #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
