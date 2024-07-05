@@ -217,6 +217,15 @@ def capture_case_heading(id, docs):
     except Exception as e:
         print(f"Case Heading : no doc present for id : {id}")
         return ""
+    
+def extract_and_format_url(link):
+    match = re.search(r'itemid%22:\[%22(\d+)%22\]', link)
+    if match:
+        item_id = match.group(1)
+        formatted_id = f"001-{item_id.zfill(6)}"
+        return formatted_id
+    return None
+
 
 if __name__ == "__main__":
     docs  = get_mongo_docs()
