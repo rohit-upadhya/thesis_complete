@@ -3,3 +3,4 @@ output/*/*.txt
 raw_data/*/*df
 .DS_Store
 output/*/*/*.txt
+raw_data/*/*/*df
