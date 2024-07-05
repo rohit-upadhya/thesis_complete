@@ -14,6 +14,8 @@ def scrape(filePath):
     pdf = fitz.open(filePath)  # filePath is a string that contains the path to the pdf
 
     for page_num, page in enumerate(pdf):
+        if page_num < 3:  # Skip the first three pages (0, 1, 2)
+            continue
         # Extract text and its properties
         dict = page.get_text("dict")
         blocks = dict["blocks"]
@@ -49,13 +51,13 @@ def filter_results(results):
     filtered_results = []
     for result in results:
         text, size, font, link = result
-        if size >= 12.0 or "Calibri-Bold" in font or link is not None or "§" in text:
+        if size >= 12.0001 or "Calibri-Bold" in font or link is not None or "§" in text:
             # print(type(link))  # For debugging, prints the type of the link
             filtered_results.append(result)
     final_results = []
     for result in filtered_results:
         text, size, font, link = result
-        if (size >= 12.0 or "Calibri-Bold" in font) and link is not None:
+        if (size >= 12.0001 or "Calibri-Bold" in font) and link is not None:
             final_results.append((text, size, font, None))
         else:
             final_results.append(result)
@@ -105,7 +107,7 @@ def combine_adjacent_entries_with_same_size(results):
     for i in range(1, len(results)):
         text, size, font, link = results[i]
 
-        if size == current_size and size >11.5:
+        if size >= 12.0001 and utils.compare(size, current_size):
             combined_text += " " + text
         else:
             combined_results.append((combined_text, current_size, current_font, current_link))
@@ -137,12 +139,26 @@ def separate_links(results):
             final_results.append((text, size, font, link))
     return final_results
 
+def remove_arial(results):
+    final_results = []
+    for result in results:
+        if "Arial-BoldMT" not in result[2]:
+            final_results.append(result)
+    return final_results
+
+def remove_comma(results):
+    final_results = []
+    for result in results:
+        if (len(result[0]) > 1) or result[3] is not None:
+            final_results.append(result)
+    return final_results
+
 def combine_entries_with_section(results):
     final_results = []
     i = 0
     while i < len(results):
         text, size, font, link = results[i]
-        if link is not None and i + 1 < len(results) and "§" in results[i + 1][0] and results[i + 1][3] is None:
+        if link is not None and i + 1 < len(results) and "§" in results[i + 1][0] and results[i + 1][3] is None and results[i+1][1] <= 12.0001:
             combined_text = text + " " + results[i + 1][0]
             final_results.append((combined_text, size, font, link))
             i += 2  # Skip the next entry as it has been combined
@@ -156,7 +172,7 @@ def build_query(results):
     final_results = []
     for result in results:
         text, size, font, link = result
-        if size > 11.5:
+        if size >= 12.0001:
             # print("text before query ",text)
             while(len(query)>0 and size >= query[-1][1]):
                 query.pop()
@@ -223,11 +239,14 @@ def obtain_paragraphs(results):
     # docs = list(docs)
     # print(docs[:10])
     final_results = []
+    heading_set = set()
     for result in results:
         text, size, font, link, query, para_nums = result
         paragraphs = []
         id = link.split("i=")[1]
         case_heading = utils.capture_case_heading(id, docs)
+        if len(case_heading) == 0:
+            heading_set.add(id)
         for paragraph_number in para_nums:
             # paragraph, html = utils.capture_paragrahs(id, paragraph_number, docs)
             paragraph = utils.capture_paragraphs(id, paragraph_number, docs)
@@ -236,7 +255,7 @@ def obtain_paragraphs(results):
         # print(len(paragraphs))
         # paragraphs = "\n".join(paragraphs)
         final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading))
-    return final_results
+    return final_results, heading_set
 
 
 def make_csv(results):
@@ -272,20 +291,37 @@ if __name__ == "__main__":
             if "pdf" in filename:
                 files.append(os.path.join(dirpath, filename))
     number_of_results = []
-    print(files)
     for file in files :
+        print(file)
         file_name = file.split("/")[-1].split(".pdf")[0]
         results = scrape(file)
         filtered_results = filter_results(results=results)
         combined_links = combine_adjacent_entries_with_same_link(results=filtered_results)
-        combined_size = combine_adjacent_entries_with_same_size(results=combined_links)
+        removed_arial = remove_arial(combined_links)
+        remove_commas = remove_comma(removed_arial)
+        combined_size = combine_adjacent_entries_with_same_size(results=remove_commas)
         seperate_links = separate_links(combined_size)
         combined_results = combine_entries_with_section(seperate_links)
         results_with_query = build_query(combined_results)
         relevant_results = filter_out_links_para(results_with_query)
         relevant_results_with_para_num = obtain_paragraph_numbers(relevant_results)
         relevant_results_triplet = combine_paragraph_numbers(relevant_results_with_para_num)
-        final_result = obtain_paragraphs(relevant_results_triplet)
+        # final_result = obtain_paragraphs(relevant_results_triplet)
+        # final_result, headings = obtain_paragraphs(relevant_results_triplet)
+        
+        print("filtered_results", len(filtered_results))
+        print("combined_links", len(combined_links))
+        print("removed_arial", len(removed_arial))
+        print("remove_commas", len(remove_commas))
+        print("combined_size", len(combined_size))
+        print("seperate_links", len(seperate_links))
+        print("combined_results", len(combined_results))
+        print("results_with_query", len(results_with_query))
+        print("relevant_results", len(relevant_results))
+        print("relevant_results_with_para_num", len(relevant_results_with_para_num))
+        print("relevant_results_triplet", len(relevant_results_triplet))
+        # print("unusable results : ", len(headings))
+        # print("usable results : ", len(final_result) - len(headings))
         
         # for result in final_results:
         #     text, size, font, link = result
@@ -293,22 +329,26 @@ if __name__ == "__main__":
         #         if "§" in text:
         #             print(result)
         # print(relevant_results_triplet[0:3])
-        text_file_output =  os.path.join("output","italian","results2.txt")           
+        text_file_output =  os.path.join("output", "italian","txts",f"italian_results-{file_name}.txt")           
         with open(text_file_output, "w+") as file:
-            for result in final_result:
+            for result in relevant_results_triplet:
                 # if result[3] in "https://hudoc.echr.coe.int/eng?i=001-105606":
                 # file.write(f"Query: {result[4]}, Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+                file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]} \n")
                 # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
-                file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}n")
+                # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
                 # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
                 # file.write("\n")
         # make_csv(final_result)
     #     print("number of obtained query, case, paragraph triplets : ",len(final_result))
-        number_of_results.append(f"Number of results in {file_name} = {len(final_result)}")
-        convert_to_json(file_name=f"{file_name}.json", final_result=final_result)
-        number_result_file_output =  os.path.join("output","italian", "italian_results.txt")
-        with open(number_result_file_output, "a+") as file:
-                file.write(f"{result}\n")
+    
+    
+    
+        # number_of_results.append(f"Number of results in {file_name} = {len(final_result)}")
+        # convert_to_json(file_name=f"{file_name}.json", final_result=final_result)
+        # number_result_file_output =  os.path.join("output","italian", "italian_results.txt")
+        # with open(number_result_file_output, "a+") as file:
+        #         file.write(f"{result}\n")
                 # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
                 # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
                 # file.write("\n")

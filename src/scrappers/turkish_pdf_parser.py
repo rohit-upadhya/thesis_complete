@@ -184,7 +184,7 @@ def build_query(results):
 def filter_out_links_para(results):
     final_results = []
     for result in results:
-        if(result[3] is not None and "§" in result[0] and "i=" in result[3]):
+        if(result[3] is not None and "§" in result[0] and ("i=" in result[3] or "{%22itemid%22:" in result[3])):
             final_results.append(result)
     return final_results
 
@@ -207,7 +207,10 @@ def obtain_paragraphs(results):
     for result in results:
         text, size, font, link, query, para_nums = result
         paragraphs = []
-        id = link.split("i=")[1]
+        if "i=" in link:
+            id = link.split("i=")[1]
+        elif "%22itemid%22" in link:
+            id = utils.extract_and_format_url(link)
         case_heading = utils.capture_case_heading(id, docs)
         if len(case_heading) == 0:
             heading_set.add(id)
@@ -229,6 +232,10 @@ def combine_paragraph_numbers(results):
 
     for result in results:
         text, size, font, link, query, para_nums = result
+        
+        if any(isinstance(item, str) and item.startswith('—') and item.endswith('—') and len(item) == 3 for item in query):
+            continue
+        
         # Convert inner lists to tuples for the key
         query_key = tuple(tuple(item) if isinstance(item, list) else item for item in query)
         key = (query_key, link)
@@ -271,7 +278,7 @@ def convert_to_json(final_result, file_name = "results.json"):
         json.dump(json_result, file, ensure_ascii=False, indent=4)
         
 if __name__ == "__main__":
-    raw_data_path = "raw_data/turkish/"
+    raw_data_path = "raw_data/turkish/test"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(raw_data_path):
         for filename in filenames:
@@ -284,8 +291,8 @@ if __name__ == "__main__":
         results = scrape(file)
         filtered_results = filter_results(results=results)
         combined_links = combine_adjacent_entries_with_same_link(results=filtered_results)
-        removed_arial = remove_arial(combined_links)
-        remove_commas = remove_comma(removed_arial)
+        # removed_arial = remove_arial(combined_links)
+        remove_commas = remove_comma(combined_links)
         combined_size = combine_adjacent_entries_with_same_size(results=remove_commas)
         seperate_links = separate_links(combined_size)
         combined_results = combine_entries_with_section(seperate_links)
@@ -293,7 +300,7 @@ if __name__ == "__main__":
         relevant_results = filter_out_links_para(results_with_query)
         relevant_results_with_para_num = obtain_paragraph_numbers(relevant_results)
         relevant_results_triplet = combine_paragraph_numbers(relevant_results_with_para_num)
-        final_result, headings = obtain_paragraphs(relevant_results_triplet)
+        # final_result, headings = obtain_paragraphs(relevant_results_triplet)
         # final_result = obtain_paragraphs(relevant_results_with_para_num)
         
         # for result in final_results:
@@ -303,7 +310,7 @@ if __name__ == "__main__":
         #             print(result)
         print("filtered_results", len(filtered_results))
         print("combined_links", len(combined_links))
-        print("removed_arial", len(removed_arial))
+        # print("removed_arial", len(removed_arial))
         print("remove_commas", len(remove_commas))
         print("combined_size", len(combined_size))
         print("seperate_links", len(seperate_links))
@@ -312,16 +319,16 @@ if __name__ == "__main__":
         print("relevant_results", len(relevant_results))
         print("relevant_results_with_para_num", len(relevant_results_with_para_num))
         print("relevant_results_triplet", len(relevant_results_triplet))
-        print("unusable results : ", len(headings))
-        print("usable results : ", len(final_result) - len(headings))
+        # print("unusable results : ", len(headings))
+        # print("usable results : ", len(final_result) - len(headings))
         
         
         
         text_file_output =  os.path.join("output", "turkish","tests",f"turkish_results-{file_name}.txt")
         with open(text_file_output, "w+") as file:
-            for result in results_with_query:
-                # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
-                file.write(f"Query: {result[4]}, Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+            for result in relevant_results_triplet:
+                file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+                # file.write(f"Query: {result[4]}, Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
                 # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
         #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
         #         # file.write("\n")
@@ -331,10 +338,10 @@ if __name__ == "__main__":
         
         
         
-        convert_to_json(file_name=f"{file_name}.json",final_result=final_result)
-        number_result_file_output =  os.path.join("output", "turkish", "turkish_number_results.txt")
-        with open(number_result_file_output, "a+") as file:
-            file.write(f"Number of results in {file_name} = {len(final_result)}\t || Usable results  = {len(final_result) - len(headings)}\n")
+        # convert_to_json(file_name=f"{file_name}.json",final_result=final_result)
+        # number_result_file_output =  os.path.join("output", "turkish", "turkish_number_results.txt")
+        # with open(number_result_file_output, "a+") as file:
+        #     file.write(f"Number of results in {file_name} = {len(final_result)}\t || Usable results  = {len(final_result) - len(headings)}\n")
 
     
         #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
