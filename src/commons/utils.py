@@ -20,24 +20,36 @@ def get_mongo_docs():
     # docs = all.find({'doctype': 'HEJUD'})
     return hejud
 
-def extract_paragraph_numbers(text):
+def extract_paragraph_numbers(text,pattern=r'§{1,2}\s*(\d+)(?:-(\d+))?'):
     """
-    Extract numbers following the § symbol from the given text.
+    Extract numbers following the § symbol from the last matching line in the given text.
     Handles both single numbers and ranges (e.g., §§ 26-32).
     """
-    # paragraph_numbers = []
-
     # Regular expression to find patterns like § 26 or §§ 26-32
-    pattern = re.compile(r'§{1,2}\s*(\d+)(?:-(\d+))?')
-    match = pattern.search(text)
-    if match:
-        start = int(match.group(1))
-        end = int(match.group(2)) if match.group(2) else start
+    try:
+        
+        pattern = re.compile(pattern)
+        
+        # Find all matches in the text
+        matches = pattern.findall(text)
+        
+        # If no matches found, return an empty list
+        if not matches:
+            return []
+        
+        # Get the last match
+        last_match = matches[-1]
+        print(last_match)
+        # Extract the start and end numbers
+        start = int(last_match[1])
+        end = int(last_match[2]) if last_match[2] else start
 
         # Return all numbers in the range as a list
         return list(range(start, end + 1))
-
-    return []
+    
+    except Exception as e:
+        print("Could not parse out the paragraph number")
+        return None 
     # pattern = re.compile(r'§{1,2}\s*(\d+)(?:-(\d+))?')
 
     # matches = pattern.findall(text)
@@ -49,11 +61,49 @@ def extract_paragraph_numbers(text):
     #     paragraph_numbers.extend(range(start, end + 1))
 
     # return paragraph_numbers
+def split_paragraph_tuple(input_tuple, paragraph_pattern=r'§{1,2}\s*(\d+)(?:-(\d+))?'):
+    text, size, font, link = input_tuple
+    
+    # Compile the user-defined regex pattern to find the paragraph tags
+    pattern = re.compile(paragraph_pattern)
+    
+    # Find all matches of the pattern in the text
+    matches = list(pattern.finditer(text))
+    
+    # If there are less than 2 paragraph tags, return the original tuple as is
+    if len(matches) < 2:
+        return [input_tuple]
+    
+    # Check if all matched paragraphs are the same
+    paragraphs = [match.group() for match in matches]
+    if all(paragraph == paragraphs[0] for paragraph in paragraphs):
+        return [input_tuple]
+    
+    # Get the starting positions of each match
+    match_positions = [match.start() for match in matches]
+    
+    # Split the text at the positions of the paragraph tags
+    result = []
+    start = 0
+    for i in range(1, len(match_positions)):
+        prev_pos = match_positions[i - 1]
+        curr_pos = match_positions[i]
+        
+        # Check if the distance between two paragraph tags is small enough to be considered the same segment
+        if curr_pos - prev_pos < 100:  # Adjust the number 100 as needed
+            result.append((text[start:curr_pos].strip(), size, font, None))
+            start = curr_pos
+            
+    result.append((text[start:].strip(), size, font, link))
+    
+    return result
+
 
 def extract_paragraphs_from_sentences(id, paragraph_no, docs):
     
-    # document = docs.find_one({'_id': id})
-    document = docs.get(id)
+    document = docs.find_one({'_id': id})
+    
+    # document = docs.get(id)
     # document = create_para_sub_para(document=document)
     # for key in document.keys():
     #         print(key)
@@ -67,7 +117,6 @@ def extract_paragraphs_from_sentences(id, paragraph_no, docs):
         print(id)
         flag = 0
         i = 0
-        
         while i < len(sentences):
             if "PROCEDURE".lower() in sentences[i].lower():
                 i += 1
@@ -82,10 +131,11 @@ def extract_paragraphs_from_sentences(id, paragraph_no, docs):
             j += 1
         
         sentences = create_para_sub_para(sentences=sentences[i:j+1])
-        file_name = f"src/commons/test/{id}.txt"
-        with open(file_name, "w+") as file:
-            for sen in sentences:
-                file.write(f"{len(sen)} \t{sen} \n\n\n")
+        # print(sentences)
+        # file_name = f"src/commons/test/{id}.txt"
+        # with open(file_name, "w+") as file:
+        #     for sen in sentences:
+        #         file.write(f"{len(sen)} \t{sen} \n\n\n")
         # for doc in sentences:
         #     if f"{paragraph}. " in doc[:5] :
         #         flag = 1
@@ -96,19 +146,25 @@ def extract_paragraphs_from_sentences(id, paragraph_no, docs):
         # return paragraphs
         
         for doc in sentences:
+            # print(doc)
             match = re.match(r'\d+', doc[0][:5])
             # if f"{paragraph_no}. " in doc[0][:5] :
             if int(match.group()) == paragraph_no:
                 paragraphs.append(doc)
         return paragraphs[0]
     except Exception as e:
+        # with open("src/commons/paragraph.txt","a+") as file:
+        #     file.write(f"Paragraph not present for this id : {id}\n")
         print(f"Paragraph not present for this id : {id}")
+        
         return []
 
 def create_para_sub_para(sentences):
+    
     final_document = []
     previous_number = 0
     document = []
+    
     for sentence in sentences:
         match = re.match(r'\d+', sentence[:5])
         if match:
@@ -193,8 +249,6 @@ def find_overlapping_paragraphs(paragraphs1, paragraphs2, threshold=0.7):
 def capture_paragraphs(id, paragraph_no, docs):
     html_paragraph = extract_paragraph_from_html(id, paragraph_no, docs)
     sentence_paragraphs = extract_paragraphs_from_sentences(id, paragraph_no, docs)
-    # print("html_paragraph : ",html_paragraph)
-    # print("sentence_paragraphs : ",sentence_paragraphs)
     if len(html_paragraph) == 0:
         return sentence_paragraphs
     if len(sentence_paragraphs) == 0:
@@ -210,36 +264,33 @@ def capture_paragraphs(id, paragraph_no, docs):
 
 def capture_case_heading(id, docs):
     try:
-        # document = docs.find_one({'_id': id})
-        document = docs.get(id)
+        document = docs.find_one({'_id': id})
+        # document = docs.get(id)
         
         return document['docname']
     except Exception as e:
         print(f"Case Heading : no doc present for id : {id}")
+        # with open("src/commons/paragraph.txt","a+") as file:
+        #     file.write(f"Case Heading : no doc present for id : {id} \n")
         return ""
     
 def extract_and_format_url(link):
-    match = re.search(r'itemid%22:\[%22(\d+)%22\]', link)
+    match = re.search(r'itemid%22:\[%22(001-\d+)%22\]', link)
     if match:
         item_id = match.group(1)
-        formatted_id = f"001-{item_id.zfill(6)}"
+        formatted_id = f"{item_id.zfill(6)}"
         return formatted_id
     return None
 
 
 if __name__ == "__main__":
     docs  = get_mongo_docs()
-    paragraph = extract_paragraph_from_html("001-192804", 147, docs)
-    additional_paragraphs = extract_paragraphs_from_sentences("001-192804", 147, docs)
+    # paragraph = extract_paragraph_from_html("001-57436", 73, docs)
+    additional_paragraphs = extract_paragraphs_from_sentences("001-108382", 59, docs)
+    print(capture_case_heading("001-108382",docs))
     
-    # threshold = 0.85  # Adjust this value as needed
-    # print("going to extracted now")
-    # overlapping_paragraphs = find_overlapping_paragraphs(paragraph, additional_paragraphs, threshold)
-    
-    # for extracted, additional, similarity in overlapping_paragraphs:
-    #     print("Extracted Paragraph:", extracted)
-    #     print("Overlapping Additional Paragraph:", additional)
-    #     print("Similarity:", similarity)
-    #     print("\n---\n")
+    # link = "https://hudoc.echr.coe.int/fre#{%22itemid%22:[%22001-193486%22]}"
+    # print(extract_and_format_url(link))
     print(additional_paragraphs)
+    # print(paragraph)
     
