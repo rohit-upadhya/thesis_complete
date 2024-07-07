@@ -54,7 +54,6 @@ def filter_results(results):
     for result in results:
         text, size, font, link = result
         if size >= 12.0001 or "Calibri-Bold" in font or link is not None or "pct." in text:
-            # print(type(link))  # For debugging, prints the type of the link
             filtered_results.append(result)
     final_results = []
     for result in filtered_results:
@@ -95,6 +94,33 @@ def combine_adjacent_entries_with_same_link(results):
     
     return combined_results
 
+def split_paragraphs_in_collection(results):
+    paragraph_pattern = r'§{1,2}\s*\d+-*\d*'
+    final_results = []
+    
+    for tup in results:
+        # try:
+            split_result = utils.split_paragraph_tuple(tup, paragraph_pattern)
+            final_results.extend(split_result)
+            # for item in split_result:
+            #     final_results.append(item)
+        # except:
+        #     print(split_result)
+    return final_results
+
+def remove_arial(results):
+    final_results = []
+    for result in results:
+        if "Arial-BoldMT" not in result[2]:
+            final_results.append(result)
+    return final_results
+
+def remove_comma(results):
+    final_results = []
+    for result in results:
+        if (len(result[0]) > 1) or result[3] is not None:
+            final_results.append(result)
+    return final_results
 
 def combine_adjacent_entries_with_same_size(results):
     combined_results = []
@@ -222,57 +248,63 @@ def combine_paragraph_numbers(results):
     
     return final_results
 
-def extract_paragraph_numbers(text):
-    """
-    Extract numbers following the § symbol or pct. from the given text.
-    Handles both single numbers and ranges (e.g., §§ 26-32 or pct. 26-32).
-    """
-    pattern = re.compile(r'(§{1,2}|pct\.)\s*(\d+)(?:-(\d+))?')
-    match = pattern.search(text)
-    if match:
-        symbol = match.group(1)
-        start = int(match.group(2))
-        end = int(match.group(3)) if match.group(3) else start
+# def extract_paragraph_numbers(text):
+#     """
+#     Extract numbers following the § symbol or pct. from the given text.
+#     Handles both single numbers and ranges (e.g., §§ 26-32 or pct. 26-32).
+#     """
+#     pattern = re.compile(r'(§{1,2}|pct\.)\s*(\d+)(?:-(\d+))?')
+#     match = pattern.search(text)
+#     if match:
+#         symbol = match.group(1)
+#         start = int(match.group(2))
+#         end = int(match.group(3)) if match.group(3) else start
 
-        # Return all numbers in the range as a list
-        return list(range(start, end + 1))
+#         # Return all numbers in the range as a list
+#         return list(range(start, end + 1))
 
-    return []
+#     return []
 
 def obtain_paragraph_numbers(results):
     final_result = []
     for result in results:
         text, size, font, link, query = result
-        numbers = extract_paragraph_numbers(text)
-        numbers = set(numbers)
-        numbers = list(numbers)
-        if (len(numbers)>1) and (numbers[0] == numbers[1]):
-            numbers = [numbers[0]]
-        final_result.append((text,size,font,link, query, numbers))
+        # text = text.replace('6 § 1', '6 paragraph 1')
+        pattern = r'(§{1,2}|pct\.)\s*(\d+)(?:-(\d+))?'
+        numbers = utils.extract_paragraph_numbers(text, pattern)
+        if numbers is not None:
+            print(numbers)
+            numbers = set(numbers)
+            numbers = list(numbers)
+            if (len(numbers)>1) and (numbers[0] == numbers[1]):
+                numbers = [numbers[0]]
+            final_result.append((text,size,font,link, query, numbers))
     return final_result
 
 def obtain_paragraphs(results):
     docs  = utils.get_mongo_docs()
-    # docs = list(docs)
-    # print(docs[:10])
     final_results = []
     heading_set = set()
+    unusable = 0
     for result in results:
         text, size, font, link, query, para_nums = result
+        if len(para_nums) == 0:
+            continue
         paragraphs = []
         id = link.split("i=")[1]
         case_heading = utils.capture_case_heading(id, docs)
         if len(case_heading) == 0:
             heading_set.add(id)
         for paragraph_number in para_nums:
-            # paragraph, html = utils.capture_paragrahs(id, paragraph_number, docs)
             paragraph = utils.capture_paragraphs(id, paragraph_number, docs)
-            for item in paragraph:
-                paragraphs.append(item)
+            # for item in paragraph:
+            paragraphs.append(paragraph)
         # print(len(paragraphs))
         # paragraphs = "\n".join(paragraphs)
+        if len(paragraphs) > 0 and len(paragraphs[0]) == 0:
+            unusable += 1
         final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading))
-    return final_results, heading_set
+    return final_results, heading_set, unusable
 
 
 def make_csv(results):
@@ -296,7 +328,7 @@ def convert_to_json(final_result, file_name = "results.json"):
 
     # Write the JSON object to a file
     file_name = os.path.join("output", "romanian", file_name)
-    with open(file_name, "w") as file:
+    with open(file_name, "w+") as file:
         json.dump(json_result, file, ensure_ascii=False, indent=4)
         
 
@@ -313,9 +345,12 @@ if __name__ == "__main__":
         file_name = file.split("/")[-1].split(".pdf")[0]
         results = scrape(file)
         filtered_results = filter_results(results=results)
+        
+        # split_paragraphs = split_paragraphs_in_collection(results=filtered_results)
         combined_links = combine_adjacent_entries_with_same_link(results=filtered_results)
-        removed_arial = remove_arial(combined_links)
-        remove_commas = remove_comma(removed_arial)
+        split_paragraphs = split_paragraphs_in_collection(results=combined_links)
+        # removed_arial = remove_arial(combined_links)
+        remove_commas = remove_comma(split_paragraphs)
         combined_size = combine_adjacent_entries_with_same_size(results=remove_commas)
         seperate_links = separate_links(combined_size)
         combined_results = combine_entries_with_section(seperate_links)
@@ -323,12 +358,13 @@ if __name__ == "__main__":
         relevant_results = filter_out_links_para(results_with_query)
         relevant_results_with_para_num = obtain_paragraph_numbers(relevant_results)
         relevant_results_triplet = combine_paragraph_numbers(relevant_results_with_para_num)
+        final_result, headings, unusable = obtain_paragraphs(relevant_results_triplet)
         # final_result = obtain_paragraphs(relevant_results_triplet)
         # final_result, headings = obtain_paragraphs(relevant_results_triplet)
         
         print("filtered_results", len(filtered_results))
         print("combined_links", len(combined_links))
-        print("removed_arial", len(removed_arial))
+        # print("removed_arial", len(removed_arial))
         print("remove_commas", len(remove_commas))
         print("combined_size", len(combined_size))
         print("seperate_links", len(seperate_links))
@@ -358,10 +394,10 @@ if __name__ == "__main__":
         # make_csv(final_result)
     # #     print("number of obtained query, case, paragraph triplets : ",len(final_result))
     #     number_of_results.append(f"Number of results in {file_name} = {len(final_result)}")
-    #     convert_to_json(file_name=f"{file_name}.json", final_result=final_result)
-    #     number_result_file_output =  os.path.join("output","romaninan", "romanian_results.txt")
-    #     with open(number_result_file_output, "a+") as file:
-    #         file.write(f"Number of results in {file_name} = {len(final_result)}")
+        convert_to_json(file_name=f"{file_name}.json", final_result=final_result)
+        number_result_file_output =  os.path.join("output","romanian", "romanian_results.txt")
+        with open(number_result_file_output, "a+") as file:
+            file.write(f"Number of results in {file_name} = {len(final_result)}\t || Usable results  = {len(final_result) - unusable}\n")
     
     
         #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
