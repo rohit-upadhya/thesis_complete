@@ -14,7 +14,7 @@ def scrape(filePath):
     pdf = fitz.open(filePath)  # filePath is a string that contains the path to the pdf
 
     for page_num, page in enumerate(pdf):
-        if page_num < 3:  # Skip the first three pages (0, 1, 2)
+        if page_num < 5:  # Skip the first three pages (0, 1, 2)
             continue
         # Extract text and its properties
         dict = page.get_text("dict")
@@ -92,6 +92,22 @@ def combine_adjacent_entries_with_same_link(results):
     combined_results.append((combined_text, current_size, current_font, current_link))
     
     return combined_results
+
+def split_paragraphs_in_collection(results):
+    paragraph_pattern = r'§{1,2}\s*\d+-*\d*'
+    final_results = []
+    
+    for tup in results:
+        # try:
+            split_result = utils.split_paragraph_tuple(tup, paragraph_pattern)
+            final_results.extend(split_result)
+            # for item in split_result:
+            #     final_results.append(item)
+        # except:
+        #     print(split_result)
+    return final_results
+
+
 def remove_arial(results):
     final_results = []
     for result in results:
@@ -192,7 +208,9 @@ def obtain_paragraph_numbers(results):
     final_result = []
     for result in results:
         text, size, font, link, query = result
-        numbers = utils.extract_paragraph_numbers(text)
+        text = text.replace('6 § 1', '6 paragraph 1')
+        pattern = r'(§{1,2})\s*(\d+)(?:-(\d+))?'
+        numbers = utils.extract_paragraph_numbers(text, pattern)
         numbers = set(numbers)
         numbers = list(numbers)
         if (len(numbers)>1) and (numbers[0] == numbers[1]):
@@ -204,8 +222,11 @@ def obtain_paragraphs(results):
     docs  = utils.get_mongo_docs()
     final_results = []
     heading_set = set()
+    unusable = 0
     for result in results:
         text, size, font, link, query, para_nums = result
+        if len(para_nums) == 0:
+            continue
         paragraphs = []
         if "i=" in link:
             id = link.split("i=")[1]
@@ -217,8 +238,10 @@ def obtain_paragraphs(results):
         for paragraph_number in para_nums:
             paragraph = utils.capture_paragraphs(id, paragraph_number, docs)
             paragraphs.append(paragraph)
+        if len(paragraphs) > 0 and len(paragraphs[0]) == 0:
+            unusable += 1
         final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading))
-    return final_results, heading_set
+    return final_results, heading_set, unusable
 
 
 def make_csv(results):
@@ -274,11 +297,11 @@ def convert_to_json(final_result, file_name = "results.json"):
 
     # Write the JSON object to a file
     file_name = os.path.join("output", "ukrainian", file_name)
-    with open(file_name, "w") as file:
+    with open(file_name, "w+") as file:
         json.dump(json_result, file, ensure_ascii=False, indent=4)
         
 if __name__ == "__main__":
-    raw_data_path = "raw_data/ukrainian"
+    raw_data_path = "raw_data/ukrainian/"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(raw_data_path):
         for filename in filenames:
@@ -290,9 +313,13 @@ if __name__ == "__main__":
         file_name = file.split("/")[-1].split(".pdf")[0]
         results = scrape(file)
         filtered_results = filter_results(results=results)
+        
+        
+        # split_paragraphs = split_paragraphs_in_collection(results=filtered_results)
         combined_links = combine_adjacent_entries_with_same_link(results=filtered_results)
+        split_paragraphs = split_paragraphs_in_collection(results=combined_links)
         # removed_arial = remove_arial(combined_links)
-        remove_commas = remove_comma(combined_links)
+        remove_commas = remove_comma(split_paragraphs)
         combined_size = combine_adjacent_entries_with_same_size(results=remove_commas)
         seperate_links = separate_links(combined_size)
         combined_results = combine_entries_with_section(seperate_links)
@@ -300,7 +327,7 @@ if __name__ == "__main__":
         relevant_results = filter_out_links_para(results_with_query)
         relevant_results_with_para_num = obtain_paragraph_numbers(relevant_results)
         relevant_results_triplet = combine_paragraph_numbers(relevant_results_with_para_num)
-        # final_result, headings = obtain_paragraphs(relevant_results_triplet)
+        final_result, headings, unusable = obtain_paragraphs(relevant_results_triplet)
         # final_result = obtain_paragraphs(relevant_results_with_para_num)
         
         # for result in final_results:
@@ -319,12 +346,13 @@ if __name__ == "__main__":
         print("relevant_results", len(relevant_results))
         print("relevant_results_with_para_num", len(relevant_results_with_para_num))
         print("relevant_results_triplet", len(relevant_results_triplet))
-        # print("unusable results : ", len(headings))
+        print("unusable heading results : ", len(headings))
+        print("unusable paragraph results : ", unusable)
         # print("usable results : ", len(final_result) - len(headings))
         
         
         
-        text_file_output =  os.path.join("output", "ukrainian","txts",f"ukrainian_results-{file_name}.txt")
+        text_file_output =  os.path.join("output", "ukrainian","tests",f"ukrainian_results-{file_name}.txt")
         with open(text_file_output, "w+") as file:
             for result in relevant_results_triplet:
                 file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
@@ -338,10 +366,15 @@ if __name__ == "__main__":
         
         
         
-        # convert_to_json(file_name=f"{file_name}.json",final_result=final_result)
-        # number_result_file_output =  os.path.join("output", "ukrainian", "ukrainian_number_results.txt")
-        # with open(number_result_file_output, "a+") as file:
-        #     file.write(f"Number of results in {file_name} = {len(final_result)}\t || Usable results  = {len(final_result) - len(headings)}\n")
+        convert_to_json(file_name=f"{file_name}.json",final_result=final_result)
+        number_result_file_output =  os.path.join("output", "ukrainian", "ukrainian_number_results.txt")
+        with open(number_result_file_output, "a+") as file:
+            file.write(f"Number of results in {file_name} = {len(final_result)}\t || Usable results  = {len(final_result) - unusable}\n")
+
+        unusable_docs =  os.path.join("output", "ukrainian", "unusable_docw_results.txt")
+        with open(unusable_docs, "a+") as file:
+            for element in headings:
+                file.write(f"{element}\n")
 
     
         #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
