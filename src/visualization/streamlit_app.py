@@ -92,18 +92,18 @@ if page == "JSON Checker":
                                 save_filename = save_computation(current_data, is_satisfactory, language)
                                 st.success(f"Computation saved to {save_filename}")
 
-                        # Navigation buttons at the bottom
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            if st.session_state.page > 0:
-                                if st.button("Previous"):
-                                    st.session_state.page -= 1
-                                    st.experimental_rerun()
-                        with col3:
+                            # Next button below Save Computation button
                             if st.session_state.page < len(json_data) - 1:
                                 if st.button("Next"):
                                     st.session_state.page += 1
                                     st.experimental_rerun()
+                            
+                            # Previous button below Next button
+                            if st.session_state.page > 0:
+                                if st.button("Previous"):
+                                    st.session_state.page -= 1
+                                    st.experimental_rerun()
+
                     else:
                         st.error("The provided JSON file is not a list of objects.")
                 else:
