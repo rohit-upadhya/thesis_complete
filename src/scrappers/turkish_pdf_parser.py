@@ -3,7 +3,6 @@ import fitz  # PyMuPDF
 from src.commons import utils
 import csv
 import json
-import re
 
 def normalize_link(link):
     if link and link.startswith('http:'):
@@ -11,16 +10,16 @@ def normalize_link(link):
     return link
 
 def scrape(filePath):
-    results = []  # list of tuples that store the information as (text, font size, font name, link)
-    pdf = fitz.open(filePath)  # filePath is a string that contains the path to the pdf
+    results = []
+    pdf = fitz.open(filePath)
 
     for page_num, page in enumerate(pdf):
-        if page_num < 3:  # Skip the first three pages (0, 1, 2)
+        if page_num < 5:
             continue
         # Extract text and its properties
         dict = page.get_text("dict")
         blocks = dict["blocks"]
-        links = page.get_links()  # Get all links on the page
+        links = page.get_links()
 
         for block in blocks:
             if "lines" in block.keys():
@@ -194,7 +193,10 @@ def build_query(results):
             query.append([text, size])
         query_tuple = []
         for item in query:
-            query_tuple.append(item[0].split(". ")[-1].strip())
+            parts = item[0].split(". ")
+            headings = " ".join(parts[1:])
+            query_tuple.append(headings.strip())
+            # query_tuple.append(item[0].split(". ")[-1].strip())
         final_results.append((text, size, font, link, query_tuple))
     return final_results
 
@@ -210,7 +212,7 @@ def obtain_paragraph_numbers(results):
     for result in results:
         text, size, font, link, query = result
         text = text.replace('6 § 1', '6 paragraph 1')
-        pattern = r'§{1,2}\s*(\d+)(?:-(\d+))?'
+        pattern = r'(§{1,2})\s*(\d+)(?:-(\d+))?'
         numbers = utils.extract_paragraph_numbers(text, pattern)
         numbers = set(numbers)
         numbers = list(numbers)
@@ -236,12 +238,13 @@ def obtain_paragraphs(results):
         case_heading = utils.capture_case_heading(id, docs)
         if len(case_heading) == 0:
             heading_set.add(id)
+        sentences = utils.sentence_extraction(id, docs)
         for paragraph_number in para_nums:
-            paragraph = utils.capture_paragraphs(id, paragraph_number, docs)
+            paragraph = utils.capture_paragraphs(id=id, sentences=sentences, paragraph_no=paragraph_number)
             paragraphs.append(paragraph)
         if len(paragraphs) > 0 and len(paragraphs[0]) == 0:
             unusable += 1
-        final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading))
+        final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading, sentences))
     return final_results, heading_set, unusable
 
 
@@ -290,14 +293,15 @@ def convert_to_json(final_result, file_name = "results.json"):
         entry = {
             "query": result[4],
             "case_name": result[7],
-            "paragrpahs": result[6],
+            "relevant_paragrpahs": result[6],
             "paragraph_numbers": result[5],
             "link": result[3],
+            "all_paragraphs": result[8]
         }
         json_result.append(entry)
 
     # Write the JSON object to a file
-    file_name = os.path.join("output", "turkish", file_name)
+    file_name = os.path.join("output","turkish","jsons", file_name)
     with open(file_name, "w+") as file:
         json.dump(json_result, file, ensure_ascii=False, indent=4)
         
@@ -310,7 +314,6 @@ if __name__ == "__main__":
                 files.append(os.path.join(dirpath, filename))
     # print(files)
     for file in files:
-        print(file)
         file_name = file.split("/")[-1].split(".pdf")[0]
         results = scrape(file)
         filtered_results = filter_results(results=results)
@@ -336,6 +339,7 @@ if __name__ == "__main__":
         #     if link is None:
         #         if "§" in text:
         #             print(result)
+        print(file)
         print("filtered_results", len(filtered_results))
         print("combined_links", len(combined_links))
         # print("removed_arial", len(removed_arial))
@@ -349,16 +353,17 @@ if __name__ == "__main__":
         print("relevant_results_triplet", len(relevant_results_triplet))
         print("unusable heading results : ", len(headings))
         print("unusable paragraph results : ", unusable)
-        # print("usable results : ", len(final_result) - len(headings))
+        print("usable results : ", len(final_result) - len(headings))
         
         
         
         text_file_output =  os.path.join("output", "turkish","tests",f"turkish_results-{file_name}.txt")
         with open(text_file_output, "w+") as file:
-            for result in relevant_results_triplet:
-                file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+            for result in results:
+                # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
                 # file.write(f"Query: {result[4]}, Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
-                # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+                # if result[1] > 12.5:
+                    file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
         #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
         #         # file.write("\n")
         # # make_csv(final_result)
@@ -372,10 +377,10 @@ if __name__ == "__main__":
         with open(number_result_file_output, "a+") as file:
             file.write(f"Number of results in {file_name} = {len(final_result)}\t || Usable results  = {len(final_result) - unusable}\n")
 
-        unusable_docs =  os.path.join("output", "turkish", "unusable_docw_results.txt")
-        with open(unusable_docs, "a+") as file:
-            for element in headings:
-                file.write(f"{element}\n")
+        # unusable_docs =  os.path.join("output", "turkish", "unusable_docw_results.txt")
+        # with open(unusable_docs, "a+") as file:
+        #     for element in headings:
+        #         file.write(f"{element}\n")
 
     
         #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")

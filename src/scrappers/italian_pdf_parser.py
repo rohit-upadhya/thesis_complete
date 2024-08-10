@@ -14,7 +14,7 @@ def scrape(filePath):
     pdf = fitz.open(filePath)  # filePath is a string that contains the path to the pdf
 
     for page_num, page in enumerate(pdf):
-        if page_num < 3:  # Skip the first three pages (0, 1, 2)
+        if page_num < 5:  # Skip the first three pages (0, 1, 2)
             continue
         # Extract text and its properties
         dict = page.get_text("dict")
@@ -194,7 +194,9 @@ def build_query(results):
         # print("final query after append ",query)
         query_tuple = []
         for item in query:
-            query_tuple.append(item[0].split(". ")[-1].strip())
+            parts = item[0].split(". ")
+            headings = " ".join(parts[1:])
+            query_tuple.append(headings.strip())
         query_tuple = tuple(query_tuple)
         final_results.append((text, size, font, link, query_tuple))
     return final_results
@@ -202,7 +204,7 @@ def build_query(results):
 def filter_out_links_para(results):
     final_results = []
     for result in results:
-        if(result[3] is not None and "§" in result[0] and "i=" in result[3]):
+        if(result[3] is not None and "§" in result[0] and ("i=" in result[3] or "{%22itemid%22:" in result[3])):
             final_results.append(result)
     return final_results
 
@@ -241,7 +243,8 @@ def obtain_paragraph_numbers(results):
     for result in results:
         text, size, font, link, query = result
         text = text.replace('6 § 1', '6 paragraph 1')
-        numbers = utils.extract_paragraph_numbers(text)
+        pattern = r'(§{1,2})\s*(\d+)(?:-(\d+))?'
+        numbers = utils.extract_paragraph_numbers(text, pattern)
         numbers = set(numbers)
         numbers = list(numbers)
         if (len(numbers)>1) and (numbers[0] == numbers[1]):
@@ -251,8 +254,6 @@ def obtain_paragraph_numbers(results):
 
 def obtain_paragraphs(results):
     docs  = utils.get_mongo_docs()
-    # docs = list(docs)
-    # print(docs[:10])
     final_results = []
     heading_set = set()
     unusable = 0
@@ -261,18 +262,20 @@ def obtain_paragraphs(results):
         if len(para_nums) == 0:
             continue
         paragraphs = []
-        id = link.split("i=")[1]
+        if "i=" in link:
+            id = link.split("i=")[1]
+        elif "%22itemid%22" in link:
+            id = utils.extract_and_format_url(link)
         case_heading = utils.capture_case_heading(id, docs)
         if len(case_heading) == 0:
             heading_set.add(id)
+        sentences = utils.sentence_extraction(id, docs)
         for paragraph_number in para_nums:
-            # paragraph, html = utils.capture_paragrahs(id, paragraph_number, docs)
-            paragraph = utils.capture_paragraphs(id, paragraph_number, docs)
-            # for item in paragraph:
+            paragraph = utils.capture_paragraphs(id=id, sentences=sentences, paragraph_no=paragraph_number)
             paragraphs.append(paragraph)
         if len(paragraphs) > 0 and len(paragraphs[0]) == 0:
             unusable += 1
-        final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading))
+        final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading, sentences))
     return final_results, heading_set, unusable
 
 
@@ -289,14 +292,15 @@ def convert_to_json(final_result, file_name = "results.json"):
         entry = {
             "query": result[4],
             "case_name": result[7],
-            "paragrpahs": result[6],
+            "relevant_paragrpahs": result[6],
             "paragraph_numbers": result[5],
             "link": result[3],
+            "all_paragraphs": result[8]
         }
         json_result.append(entry)
 
     # Write the JSON object to a file
-    file_name = os.path.join("output", "italian", file_name)
+    file_name = os.path.join("output", "italian", "jsons", file_name)
     with open(file_name, "w+") as file:
         json.dump(json_result, file, ensure_ascii=False, indent=4)
         
@@ -310,7 +314,7 @@ if __name__ == "__main__":
                 files.append(os.path.join(dirpath, filename))
     number_of_results = []
     for file in files :
-        print(file)
+        
         file_name = file.split("/")[-1].split(".pdf")[0]
         results = scrape(file)
         filtered_results = filter_results(results=results)
@@ -331,6 +335,7 @@ if __name__ == "__main__":
         # final_result = obtain_paragraphs(relevant_results_triplet)
         final_result, headings, unusable = obtain_paragraphs(relevant_results_triplet)
         
+        print(file)
         print("filtered_results", len(filtered_results))
         print("combined_links", len(combined_links))
         # print("removed_arial", len(removed_arial))

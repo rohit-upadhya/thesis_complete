@@ -15,7 +15,7 @@ def scrape(filePath):
     pdf = fitz.open(filePath)  # filePath is a string that contains the path to the pdf
 
     for page_num, page in enumerate(pdf):
-        if page_num < 3:  # Skip the first three pages (0, 1, 2)
+        if page_num < 5:  # Skip the first three pages (0, 1, 2)
             continue
         # Extract text and its properties
         dict = page.get_text("dict")
@@ -194,7 +194,9 @@ def build_query(results):
             query.append([text, size])
         query_tuple = []
         for item in query:
-            query_tuple.append(item[0].split(". ")[-1].strip())
+            parts = item[0].split(". ")
+            headings = " ".join(parts[1:])
+            query_tuple.append(headings.strip())
         final_results.append((text, size, font, link, query_tuple))
     return final_results
 
@@ -236,12 +238,13 @@ def obtain_paragraphs(results):
         case_heading = utils.capture_case_heading(id, docs)
         if len(case_heading) == 0:
             heading_set.add(id)
+        sentences = utils.sentence_extraction(id, docs)
         for paragraph_number in para_nums:
-            paragraph = utils.capture_paragraphs(id, paragraph_number, docs)
+            paragraph = utils.capture_paragraphs(id=id, sentences=sentences, paragraph_no=paragraph_number)
             paragraphs.append(paragraph)
         if len(paragraphs) > 0 and len(paragraphs[0]) == 0:
             unusable += 1
-        final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading))
+        final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading, sentences))
     return final_results, heading_set, unusable
 
 
@@ -290,14 +293,15 @@ def convert_to_json(final_result, file_name = "results.json"):
         entry = {
             "query": result[4],
             "case_name": result[7],
-            "paragrpahs": result[6],
+            "relevant_paragrpahs": result[6],
             "paragraph_numbers": result[5],
             "link": result[3],
+            "all_paragraphs": result[8]
         }
         json_result.append(entry)
 
     # Write the JSON object to a file
-    file_name = os.path.join("output", "romanian", file_name)
+    file_name = os.path.join("output", "romanian", "jsons", file_name)
     with open(file_name, "w+") as file:
         json.dump(json_result, file, ensure_ascii=False, indent=4)
         

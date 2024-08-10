@@ -14,7 +14,7 @@ def scrape(filePath):
     pdf = fitz.open(filePath)  # filePath is a string that contains the path to the pdf
 
     for page_num, page in enumerate(pdf):
-        if page_num < 3:  # Skip the first three pages (0, 1, 2)
+        if page_num < 5:  # Skip the first three pages (0, 1, 2)
             continue
         # Extract text and its properties
         dict = page.get_text("dict")
@@ -52,7 +52,9 @@ def filter_results(results):
     filtered_results = []
     for result in results:
         text, size, font, link = result
-        if size >= 12.0001 or link is not None or "§" in text:
+        # if size >= 12.0001 or link is not None or "§" in text:
+        if size >= 12.0001 or link is not None or ("пункт" in text or "§" in text):
+            # paragraph_pattern = r'пункт\s*(\d+)|пункты\s*(\d+)-(\d+)'
             filtered_results.append(result)
     final_results = []
     for result in filtered_results:
@@ -94,7 +96,8 @@ def combine_adjacent_entries_with_same_link(results):
     return combined_results
 
 def split_paragraphs_in_collection(results):
-    paragraph_pattern = r'пункт\s*(\d+)|пункты\s*(\d+)-(\d+)'
+    # paragraph_pattern = r'пункт\s*(\d+)|пункты\s*(\d+)-(\d+)'
+    paragraph_pattern = r'§{1,2}\s*\d+-*\d*|пункт\s*(\d+)|пункты\s*(\d+)-(\d+)'
     final_results = []
     
     for tup in results:
@@ -173,7 +176,7 @@ def combine_entries_with_section(results):
     i = 0
     while i < len(results):
         text, size, font, link = results[i]
-        if link is not None and i + 1 < len(results) and "§" in results[i + 1][0] and results[i + 1][3] is None and results[i+1][1] < 12.0001:
+        if link is not None and i + 1 < len(results) and ("пункт" in results[i + 1][0] or "§" in results[i + 1][0]) and results[i + 1][3] is None and results[i+1][1] < 12.0001:
             combined_text = text + " " + results[i + 1][0]
             final_results.append((combined_text, size, font, link))
             i += 2  # Skip the next entry as it has been combined
@@ -193,7 +196,10 @@ def build_query(results):
             query.append([text, size])
         query_tuple = []
         for item in query:
-            query_tuple.append(item[0].split(". ")[-1].strip())
+            parts = item[0].split(". ")
+            headings = " ".join(parts[1:])
+            query_tuple.append(headings.strip())
+            # query_tuple.append(item[0].split(". ")[-1].strip())
         final_results.append((text, size, font, link, query_tuple))
     return final_results
 
@@ -206,7 +212,9 @@ def filter_out_links_para(results):
 
 def obtain_paragraph_numbers(results):
     final_result = []
-    paragraph_pattern = r'пункт\s*(\d+)|пункты\s*(\d+)-(\d+)'
+    # paragraph_pattern = r'пункт\s*(\d+)|пункты\s*(\d+)-(\d+)'
+    # paragraph_pattern = r'(§{1,2})\s*(\d+)(?:-(\d+))?'
+    paragraph_pattern = r'(пункт|пункты|§{1,2})\s*(\d+)(?:-(\d+))?'
     for result in results:
         text, size, font, link, query = result
         text = text.replace('6 § 1', '6 paragraph 1')
@@ -236,12 +244,13 @@ def obtain_paragraphs(results):
         case_heading = utils.capture_case_heading(id, docs)
         if len(case_heading) == 0:
             heading_set.add(id)
+        sentences = utils.sentence_extraction(id, docs)
         for paragraph_number in para_nums:
-            paragraph = utils.capture_paragraphs(id, paragraph_number, docs)
+            paragraph = utils.capture_paragraphs(id=id, sentences=sentences, paragraph_no=paragraph_number)
             paragraphs.append(paragraph)
         if len(paragraphs) > 0 and len(paragraphs[0]) == 0:
             unusable += 1
-        final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading))
+        final_results.append((text,size,font,link, query, para_nums, paragraphs, case_heading, sentences))
     return final_results, heading_set, unusable
 
 
@@ -290,19 +299,20 @@ def convert_to_json(final_result, file_name = "results.json"):
         entry = {
             "query": result[4],
             "case_name": result[7],
-            "paragrpahs": result[6],
+            "relevant_paragrpahs": result[6],
             "paragraph_numbers": result[5],
             "link": result[3],
+            "all_paragraphs": result[8]
         }
         json_result.append(entry)
 
     # Write the JSON object to a file
-    file_name = os.path.join("output", "russian", file_name)
+    file_name = os.path.join("output", "russian", "jsons", file_name)
     with open(file_name, "w+") as file:
         json.dump(json_result, file, ensure_ascii=False, indent=4)
         
 if __name__ == "__main__":
-    raw_data_path = "raw_data/russian/tests"
+    raw_data_path = "raw_data/russian/"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(raw_data_path):
         for filename in filenames:
@@ -372,7 +382,8 @@ if __name__ == "__main__":
         number_result_file_output =  os.path.join("output", "russian", "russian_number_results.txt")
         with open(number_result_file_output, "a+") as file:
             file.write(f"Number of results in {file_name} = {len(final_result)}\t || Usable results  = {len(final_result) - len(headings)}\n")
-
+    with open(number_result_file_output, "a+") as file:
+        file.write("*"*50)
     
         #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
         #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
