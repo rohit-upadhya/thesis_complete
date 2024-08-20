@@ -7,7 +7,6 @@ def load_json(file):
         json_data = json.load(stream)
     # print(json_data)
     return json_data
-    pass
 
 if __name__=="__main__":
     output_data_path = "output/turkish/jsons/"
@@ -47,9 +46,9 @@ if __name__=="__main__":
         for idx, sample in enumerate(sampled_data):
             sample["id"] = idx
         file_name = file.split("/")[-1].split(".json")[0]
-        output_file =  os.path.join("output", "turkish", "analysis", f"{file_name}_analysis.json")
+        output_file =  os.path.join("output", "turkish", "relevant_jsons", f"{file_name}_relevant.json")
         with open(output_file, 'w') as file:
-            json.dump(sampled_data, file, indent=4, ensure_ascii=False,)
+            json.dump(usable, file, indent=4, ensure_ascii=False,)
         meta_data_file = os.path.join("output", "turkish", "analysis", "metadata_analysis.txt")
         with open(meta_data_file, 'a+') as file:
             file.write(f"for {file_name} \t\t |incorrectly parsed : {count} \t | missing cases : {count_headings} \t | usable cases : {count_usable}. \n\n\n")

@@ -47,9 +47,9 @@ if __name__=="__main__":
         for idx, sample in enumerate(sampled_data):
             sample["id"] = idx
         file_name = file.split("/")[-1].split(".json")[0]
-        output_file =  os.path.join("output", "russian", "analysis", f"{file_name}_analysis.json")
+        output_file =  os.path.join("output", "russian", "relevant_jsons", f"{file_name}_analysis.json")
         with open(output_file, 'w') as file:
-            json.dump(sampled_data, file, indent=4, ensure_ascii=False,)
+            json.dump(usable, file, indent=4, ensure_ascii=False,)
         meta_data_file = os.path.join("output", "russian", "analysis", "metadata_analysis.txt")
         with open(meta_data_file, 'a+') as file:
             file.write(f"for {file_name} \t\t |incorrectly parsed : {count} \t | missing cases : {count_headings} \t | usable cases : {count_usable}. \n\n\n")
