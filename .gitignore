@@ -5,3 +5,4 @@ raw_data/*/*df
 output/*/*/*.txt
 raw_data/*/*/*df
 output/*/*/*.json
+*/*.json
