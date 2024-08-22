@@ -2,9 +2,10 @@ from torch.utils.data import Dataset
 import torch
 
 class DualEncoderDataset(Dataset):
-    def __init__(self, examples, tokenizer, max_length=512):
+    def __init__(self, examples, query_tokenizer, paragraph_tokenizer, max_length=512):
         self.examples = examples
-        self.tokenizer = tokenizer
+        self.query_tokenizer = query_tokenizer
+        self.paragraph_tokenizer = paragraph_tokenizer
         self.max_length = max_length
 
     def __len__(self):
@@ -13,7 +14,7 @@ class DualEncoderDataset(Dataset):
     def __getitem__(self, idx):
         query, paragraph, label = self.examples[idx]
         
-        query_encoding = self.tokenizer.encode_plus(
+        query_encoding = self.query_tokenizer.encode_plus(
             query,
             max_length=self.max_length,
             add_special_tokens=True,
@@ -24,7 +25,7 @@ class DualEncoderDataset(Dataset):
             return_tensors='pt',
         )
 
-        paragraph_encoding = self.tokenizer.encode_plus(
+        paragraph_encoding = self.paragraph_tokenizer.encode_plus(
             paragraph,
             max_length=self.max_length,
             add_special_tokens=True,
@@ -40,5 +41,5 @@ class DualEncoderDataset(Dataset):
             'query_attention_mask': query_encoding['attention_mask'].squeeze(),
             'paragraph_input_ids': paragraph_encoding['input_ids'].squeeze(),
             'paragraph_attention_mask': paragraph_encoding['attention_mask'].squeeze(),
-            'labels': torch.tensor(label, dtype=torch.long)
+            'labels': torch.tensor(label, dtype=torch.float)
         }

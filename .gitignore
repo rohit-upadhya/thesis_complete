@@ -12,3 +12,5 @@ output/*/*/*.json
 */*/*.pyc
 */*.pyc
 *.pyc
+*/*/*/*.json
+model_output/*

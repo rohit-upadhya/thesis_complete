@@ -2,28 +2,35 @@
 import json
 import torch
 from dataclasses import dataclass, field
-from transformers import BertTokenizer, BertForSequenceClassification, Trainer, TrainingArguments, BertModel, BertTokenizer
+from transformers import BertTokenizer, BertModel, BertTokenizer
 import torch.optim as optim
 from sklearn.model_selection import train_test_split
-from typing import Text, Dict, List
+from typing import Text
 from tqdm import tqdm
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.nn import BCEWithLogitsLoss
 
 from src.bert.multi_models.common.dual_encoder import DualEncoderModel
 from src.bert.multi_models.common.paragraph_dataset import DualEncoderDataset
 from src.bert.common.data_loader import InputLoader
+from  src.bert.common.utils import current_date
 
 @dataclass
-class Trainer:
+class RetreivalTrainer:
     data_file: Text = None
+    config_file: Text = None
     
     def __post_init__(self):
         
         if self.data_file is None:
             raise ValueError("data file is not present. Please add proper data file.")
+        if self.config_file is None:
+            raise ValueError("data file is not present. Please add proper data file.")
+        
         self.input_loader:InputLoader = InputLoader()
-    
+        self.config = self.input_loader.load_config(self.config_file)
+        self.config = self.config["dual_encoder"]
+        
     def tokenizer(self, model_name_or_path):
         tokenizer = BertTokenizer.from_pretrained(model_name_or_path)
         return tokenizer
@@ -40,24 +47,32 @@ class Trainer:
                 examples.append((combined_query, paragraph, label))
         
         return examples
-
+    
+    def save_model(self, model_dir, query_model, paragraph_model, query_tokenizer, paragraph_tokenizer):
+        query_model.save_pretrained(f'{model_dir}/query_model')
+        paragraph_model.save_pretrained(f'{model_dir}/paragraph_model')
+        
+        query_tokenizer.save_pretrained(f'{model_dir}/query_tokenizer')
+        paragraph_tokenizer.save_pretrained(f'{model_dir}/paragraph_tokenizer')
+        
     def main(self):
-        device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+        device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {device}")
 
         examples = self.load_data()
-        tokenizer = self.tokenizer('bert-base-uncased')
+        query_tokenizer = self.tokenizer(self.config['query_model_name_or_path'])
+        paragraph_tokenizer = self.tokenizer(self.config['doc_model_name_or_path'])
 
         train_examples, val_examples = train_test_split(examples, test_size=0.1, random_state=42)
 
-        train_dataset = DualEncoderDataset(train_examples, tokenizer)
-        val_dataset = DualEncoderDataset(val_examples, tokenizer)
+        train_dataset = DualEncoderDataset(train_examples, query_tokenizer, paragraph_tokenizer)
+        val_dataset = DualEncoderDataset(val_examples, query_tokenizer, paragraph_tokenizer)
 
-        train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+        train_dataloader = DataLoader(train_dataset, batch_size=2, shuffle=True)
         val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
-        query_model = BertModel.from_pretrained('bert-base-uncased')
-        paragraph_model = BertModel.from_pretrained('bert-base-uncased')
+        query_model = BertModel.from_pretrained(self.config['query_model_name_or_path'])
+        paragraph_model = BertModel.from_pretrained(self.config['doc_model_name_or_path'])
 
         query_model.to(device)
         paragraph_model.to(device)
@@ -119,14 +134,22 @@ class Trainer:
 
             print(f"Epoch {epoch + 1}, Validation Loss: {avg_val_loss}, Validation Accuracy: {accuracy}")
 
-        model_dir = './dual_encoder_model'
-        model.query_model.save_pretrained(f'{model_dir}/query_model')
-        model.paragraph_model.save_pretrained(f'{model_dir}/paragraph_model')
-        tokenizer.save_pretrained(model_dir)
-
+        
+        model_dir = self.config["save_path"].format(date_of_training=current_date())
+        print(model_dir)
+        self.save_model(model_dir=model_dir, query_model=model.query_model, paragraph_model=model.paragraph_model, query_tokenizer=query_tokenizer, paragraph_tokenizer=paragraph_tokenizer)
+        # model_dir, query_model, paragraph_model, query_tokenizer, paragraph_tokenizer
+        # model.query_model.save_pretrained(f'{model_dir}/query_model')
+        # model.paragraph_model.save_pretrained(f'{model_dir}/paragraph_model')
+        
+        # query_tokenizer.save_pretrained(f'{model_dir}/query_tokenizer')
+        # paragraph_tokenizer.save_pretrained(f'{model_dir}/paragraph_tokenizer')
+        
 if __name__ == "__main__":
     data_file = 'src/bert/common/test.json'
-    trainer = Trainer(
-        data_file=data_file
+    config_file = "src/bert/common/config.yaml"
+    trainer = RetreivalTrainer(
+        data_file=data_file,
+        config_file=config_file
     )
     trainer.main()

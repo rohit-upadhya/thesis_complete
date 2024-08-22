@@ -1,22 +1,27 @@
-# train_model.py
-import json
+
 import torch
 from dataclasses import dataclass, field
 from transformers import BertTokenizer, BertForSequenceClassification, Trainer, TrainingArguments
 from sklearn.model_selection import train_test_split
-from typing import Text, Dict, List
+from typing import Text
 
 from src.bert.single_model.common.paragraph_dataset import ParagraphDataset
 from src.bert.common.data_loader import InputLoader
+from  src.bert.common.utils import current_date
 
 @dataclass
-class Trainer:
+class RetreivalTrainer:
     data_file: Text = None
+    config_file: Text = None
     
     def __post_init__(self):
         if data_file == None:
             raise ValueError("data file is not present. Please add proper data file.")
+        if self.config_file is None:
+            raise ValueError("data file is not present. Please add proper data file.")
         self.input_loader:InputLoader = InputLoader()
+        self.config = self.input_loader.load_config(self.config_file)
+        self.config = self.config["single_encoder"]
         
     def tokenizer(self, model_name_or_path):
         tokenizer = BertTokenizer.from_pretrained(model_name_or_path)
@@ -34,30 +39,37 @@ class Trainer:
         
         return examples
 
+    def save_model(self, model_dir, trainer, tokenizer):
+        trainer.save_model(model_dir)
+        tokenizer.save_pretrained(model_dir)
+        
     def main(self):
+        device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+        print(f"Using device: {device}")
         examples = self.load_data()
         # with open("src/bert/test_examples.txt","w+") as file:
         #     for item in examples:
         #         file.write(f"{item} \n")
         train_examples, val_examples = train_test_split(examples, test_size=0.1, random_state=42)
 
-        tokenizer = self.tokenizer(model_name_or_path='bert-base-uncased')
+        tokenizer = self.tokenizer(model_name_or_path=self.config['model_name_or_path'])
 
         train_dataset = ParagraphDataset(train_examples, tokenizer)
         val_dataset = ParagraphDataset(val_examples, tokenizer)
 
-        model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)
-
+        model = BertForSequenceClassification.from_pretrained(self.config['model_name_or_path'], num_labels=2)
+        model.to(device)
+        model_dir = self.config["save_path"].format(date_of_training=current_date())
         training_args = TrainingArguments(
-            output_dir='output/model_outputs',
-            num_train_epochs=3,
+            output_dir=model_dir+"model_outputs/",
+            num_train_epochs=1,
             per_device_train_batch_size=1,
             per_device_eval_batch_size=1,
-            gradient_accumulation_steps=1,
+            # gradient_accumulation_steps=1,
             learning_rate=5e-02,
             warmup_steps=500,
             weight_decay=0.01,
-            logging_dir='output/model_outputs/logs',
+            logging_dir=model_dir+'model_outputs/logs',
             logging_steps=10,
             evaluation_strategy="steps",
             save_steps=300,
@@ -65,7 +77,7 @@ class Trainer:
             load_best_model_at_end=True,
             metric_for_best_model="accuracy"
         )
-
+        print(model)
         trainer = Trainer(
             model=model,
             args=training_args,
@@ -75,16 +87,17 @@ class Trainer:
             compute_metrics=lambda p: {"accuracy": (p.predictions.argmax(-1) == p.label_ids).astype(float).mean().item()}
         )
 
-        # Train the model
         trainer.train()
-
-        # Save the model
-        trainer.save_model('./bert_paragraph_retrieval')
-        tokenizer.save_pretrained('./bert_paragraph_retrieval')
+        self.save_model(model_dir, trainer, tokenizer)
+        
+        # trainer.save_model('./bert_paragraph_retrieval')
+        # tokenizer.save_pretrained('./bert_paragraph_retrieval')
 
 if __name__ == "__main__":
-    data_file = 'src/bert/test.json'
-    trainer = Trainer(
-        data_file=data_file
+    data_file = 'src/bert/common/test.json'
+    config_file = "src/bert/common/config.yaml"
+    trainer = RetreivalTrainer(
+        data_file=data_file,
+        config_file=config_file
     )
     trainer.main()
