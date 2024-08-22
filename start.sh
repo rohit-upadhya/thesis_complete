@@ -1,5 +1,5 @@
 #!/bin/bash
-conda activate thesis
+conda activate rohit_work
 export PYTHONPATH=$(pwd)
 
 echo "PYTHONPATH set to: $PYTHONPATH"
