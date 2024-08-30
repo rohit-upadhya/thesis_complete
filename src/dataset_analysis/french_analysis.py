@@ -36,7 +36,7 @@ def make_data_dictionary(relevant_paragraphs, total_paragraphs, case_link, perce
     })
 
 def dump_json(path, data):
-    with open(os.path.join(path,"romanian.json"), "w+") as file:
+    with open(os.path.join(path,"french.json"), "w+") as file:
         json.dump(data, file, indent=4, ensure_ascii=False,)
     pass
 
@@ -89,7 +89,7 @@ def run_unique_number_queries(files):
     dump_json(path="data_analysis/counts",data=json_data)
 
 if __name__=="__main__":
-    input_data_path = "output/romanian/done"
+    input_data_path = "output/french/done"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(input_data_path):
         for filename in filenames:

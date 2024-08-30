@@ -18,9 +18,11 @@ def find_number_of_docs(json_dict):
     percentage = relevant_paragraphs/total_paragraphs
     percentage = round(percentage, 4)
     query_tokens = (" ".join(json_dict["query"])).split()
-    return relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len(query_tokens)
+    relevant_paragraphs_tokens = (" ".join(" ".join(paragraph) for paragraph in json_dict["relevant_paragrpahs"])).split()
+    total_paragraphs_tokens = (" ".join(" ".join(paragraph) for paragraph in json_dict["all_paragraphs"])).split()
+    return relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len(query_tokens), len(relevant_paragraphs_tokens), len(total_paragraphs_tokens)
 
-def make_data_dictionary(relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len_query_tokens, file):
+def make_data_dictionary(relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len_query_tokens, file, relevant_paragraphs_tokens, total_paragraphs_tokens):
     return ({
         "case_name": case_name,
         "case_link": case_link,
@@ -28,7 +30,9 @@ def make_data_dictionary(relevant_paragraphs, total_paragraphs, case_link, perce
         "total_paragraphs": total_paragraphs,
         "percentage": percentage,
         "query_tokens": len_query_tokens,
-        "file_name": file
+        "file_name": file,
+        "relevant_paragraphs_tokens": relevant_paragraphs_tokens,
+        "total_paragraphs_tokens": total_paragraphs_tokens
     })
 
 def dump_json(path, data):
@@ -36,14 +40,8 @@ def dump_json(path, data):
         json.dump(data, file, indent=4, ensure_ascii=False,)
     pass
 
-
-if __name__=="__main__":
-    input_data_path = "output/ukrainian/relevant_jsons"
-    files = []
-    for (dirpath, dirnames, filenames) in os.walk(input_data_path):
-        for filename in filenames:
-            if "json" in filename:
-                files.append(os.path.join(dirpath, filename))
+def run_percentage(files):
+    
     meta_data_information: List[Dict[Text,Any]] = []
     max_ = 0
     min_ = math.inf
@@ -53,13 +51,14 @@ if __name__=="__main__":
         file_meta_data: List[Dict[Text,Any]] = []
         file_total_percentage = 0
         for json_dict in json_data:
-            relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len_query_tokens = find_number_of_docs(json_dict)
+            relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len_query_tokens, relevant_paragraphs_tokens, total_paragraphs_tokens = find_number_of_docs(json_dict)
             file_total_percentage += percentage
             if max_ < percentage:
                 max_ = percentage
             if min_ > percentage:
                 min_ = percentage
-            file_meta_data.append(make_data_dictionary(relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len_query_tokens, file))
+            
+            file_meta_data.append(make_data_dictionary(relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len_query_tokens, file, relevant_paragraphs_tokens, total_paragraphs_tokens))
         
         try:
             avg = file_total_percentage/len(file_meta_data)
@@ -71,9 +70,38 @@ if __name__=="__main__":
             "file_meta_data_information": file_meta_data
         })
         
-    output_data_path = "data_analysis"
+    output_data_path = "data_analysis/specifics"
     dump_json(output_data_path,meta_data_information)
     print("min ",min_)
     print("max ",max_)
+
+def run_unique_number_queries(files):
+    queries = []
+    for file in files:
+        json_data = extract_output_jsons(file)
+        for json_dict in json_data:
+            queries.append(json_dict["query"])
+    unique_queries = set(tuple(query) for query in queries)
+    json_data = {
+        "number_of_q_d_pairs": len(queries),
+        "number_of_unique_queries": len(unique_queries)
+    }
+    dump_json(path="data_analysis/counts",data=json_data)
+
+if __name__=="__main__":
+    input_data_path = "output/ukrainian/done"
+    files = []
+    for (dirpath, dirnames, filenames) in os.walk(input_data_path):
+        for filename in filenames:
+            if "json" in filename:
+                files.append(os.path.join(dirpath, filename))
+    
+    run_percentage(files)
+    run_unique_number_queries(files)
+    
+    
+    
+    
+    
         
         
