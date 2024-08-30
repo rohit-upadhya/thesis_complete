@@ -1,0 +1,45 @@
+import os
+import json
+
+
+def count_percentage(json_dict):
+    try:
+        relevant_paragraphs = len(json_dict['relevant_paragrpahs'])
+        total_paragraphs = len(json_dict["all_paragraphs"])
+        percentage = relevant_paragraphs/total_paragraphs
+        percentage = round(percentage, 4)
+        if percentage >=0.20:
+            return False
+        return True
+    except:
+        return False
+
+def dump_json(file_name, data):
+    with open(os.path.join("output/russian/done", f"{file_name}.json"), "w+") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False,)
+        
+def loads_json(file_name):
+    with open(file_name, "r", encoding="utf-8") as stream:
+        data = json.load(stream)
+    return data
+if __name__=="__main__":
+    input_data_path = "output/russian/relevant_jsons"
+    files = []
+    for (dirpath, dirnames, filenames) in os.walk(input_data_path):
+        for filename in filenames:
+            if "json" in filename:
+                files.append(os.path.join(dirpath, filename))
+    
+    for file in files:
+        json_data = loads_json(file)
+        json_list = []
+        id = 0
+        for data in json_data:
+            if count_percentage(data):
+                data["id"] = id
+                json_list.append(data)
+                id+=1
+        file_name = file.split("/")[-1].split(".json")[0].split("_analysis")[0]
+        dump_json(file_name=file_name, data=json_list)
+        print(file)
+        
