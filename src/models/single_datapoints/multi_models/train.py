@@ -10,10 +10,10 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.nn import BCEWithLogitsLoss
 
-from src.bert.multi_models.common.dual_encoder import DualEncoderModel
-from src.bert.multi_models.common.paragraph_dataset import DualEncoderDataset
-from src.bert.common.data_loader import InputLoader
-from  src.bert.common.utils import current_date
+from src.models.single_datapoints.multi_models.common.dual_encoder import DualEncoderModel
+from src.models.single_datapoints.multi_models.common.paragraph_dataset import DualEncoderDataset
+from src.models.single_datapoints.common.data_loader import InputLoader
+from src.models.single_datapoints.common.utils import current_date
 
 @dataclass
 class RetreivalTrainer:
@@ -64,7 +64,7 @@ class RetreivalTrainer:
         paragraph_tokenizer = self.tokenizer(self.config['doc_model_name_or_path'])
 
         train_examples, val_examples = train_test_split(examples, test_size=0.1, random_state=42)
-
+        
         train_dataset = DualEncoderDataset(train_examples, query_tokenizer, paragraph_tokenizer)
         val_dataset = DualEncoderDataset(val_examples, query_tokenizer, paragraph_tokenizer)
 

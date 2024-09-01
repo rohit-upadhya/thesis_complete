@@ -5,9 +5,9 @@ from transformers import BertTokenizer, BertForSequenceClassification, Trainer, 
 from sklearn.model_selection import train_test_split
 from typing import Text
 
-from src.bert.single_model.common.paragraph_dataset import ParagraphDataset
-from src.bert.common.data_loader import InputLoader
-from  src.bert.common.utils import current_date
+from src.models.single_datapoints.single_model.common.paragraph_dataset import ParagraphDataset
+from src.models.single_datapoints.common.data_loader import InputLoader
+from src.models.single_datapoints.common.utils import current_date
 
 @dataclass
 class RetreivalTrainer:
