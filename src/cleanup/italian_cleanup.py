@@ -18,12 +18,20 @@ def dump_json(file_name, data):
     with open(os.path.join("output/italian/done", f"{file_name}.json"), "w+") as file:
         json.dump(data, file, indent=4, ensure_ascii=False,)
         
+def count_total_tokens(json_dict):
+    try:
+        total_paragraphs_tokens = [len(" ".join(paragraphs).split()) for paragraphs in json_dict["all_paragraphs"]]
+        if max(total_paragraphs_tokens) > 3500:
+            return False
+        return True
+    except:
+        return False        
 def loads_json(file_name):
     with open(file_name, "r", encoding="utf-8") as stream:
         data = json.load(stream)
     return data
 if __name__=="__main__":
-    input_data_path = "output/italian/relevant_jsons"
+    input_data_path = "output/italian/done"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(input_data_path):
         for filename in filenames:
@@ -35,7 +43,7 @@ if __name__=="__main__":
         json_list = []
         id = 0
         for data in json_data:
-            if count_percentage(data):
+            if count_percentage(data) and count_total_tokens(data):
                 data["id"] = id
                 json_list.append(data)
                 id+=1

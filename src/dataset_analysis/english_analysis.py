@@ -18,9 +18,9 @@ def find_number_of_docs(json_dict):
     percentage = relevant_paragraphs/total_paragraphs
     percentage = round(percentage, 4)
     query_tokens = (" ".join(json_dict["query"])).split()
-    relevant_paragraphs_tokens = (" ".join(" ".join(paragraph) for paragraph in json_dict["relevant_paragrpahs"])).split()
-    total_paragraphs_tokens = (" ".join(" ".join(paragraph) for paragraph in json_dict["all_paragraphs"])).split()
-    return relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len(query_tokens), len(relevant_paragraphs_tokens), len(total_paragraphs_tokens)
+    relevant_paragraphs_tokens = [len(" ".join(paragraphs).split()) for paragraphs in json_dict["relevant_paragrpahs"]]
+    total_paragraphs_tokens = [len(" ".join(paragraphs).split()) for paragraphs in json_dict["all_paragraphs"]]
+    return relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len(query_tokens), relevant_paragraphs_tokens, total_paragraphs_tokens
 
 def make_data_dictionary(relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len_query_tokens, file, relevant_paragraphs_tokens, total_paragraphs_tokens):
     return ({
