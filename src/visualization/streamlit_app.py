@@ -12,10 +12,8 @@ ANALYTICS_PATH = "/home/upadro/code/thesis/data_analysis/specifics"
 COUNTS_PATH = "/home/upadro/code/thesis/data_analysis/counts"
 LANGUAGES = ["italian", "romanian", "russian", "turkish", "ukrainian", "french", "english"]
 
-# Set the default language
 DEFAULT_LANGUAGE = "italian"
 
-# Function to save computation result to a JSON file
 def save_computation(data, is_satisfactory, language):
     data['is_satisfactory'] = is_satisfactory
     results_ = []
@@ -36,11 +34,9 @@ def save_computation(data, is_satisfactory, language):
         json.dump(results_, f, indent=4)
     return results_file_path
 
-# Function to list all JSON files in a directory
 def list_json_files(folder_path):
     return [f for f in os.listdir(folder_path) if f.endswith('.json')]
 
-# Function to calculate the number of satisfactory and unsatisfactory results
 def calculate_satisfactory_results(filepath):
     with open(filepath, 'r') as f:
         data = json.load(f)
@@ -50,12 +46,10 @@ def calculate_satisfactory_results(filepath):
     
     return true_count, false_count
 
-# Function to load JSON data
 def load_json_data(filepath):
     with open(filepath, 'r') as f:
         return json.load(f)
 
-# Sidebar for navigation
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", ["Main"])
 
@@ -67,7 +61,7 @@ if page == "Main":
         language = st.selectbox("Select language", LANGUAGES, index=LANGUAGES.index(DEFAULT_LANGUAGE), key="language_checker")
 
         if language:
-            foldername = os.path.join(BASE_PATH, language, "analysis")
+            foldername = os.path.join(BASE_PATH, language, "done")
             if os.path.exists(foldername):
                 json_files = list_json_files(foldername)
                 
@@ -133,7 +127,7 @@ if page == "Main":
 
     with tab3:
         st.title("Analytics")
-        st.write("_Tokens here refer to individual words (separated by spaces)._")  # Added disclaimer
+        st.write("_Tokens here refer to individual words (separated by spaces)._")
         language = st.selectbox("Select language", LANGUAGES, index=LANGUAGES.index(DEFAULT_LANGUAGE), key="language_analytics")
 
         if language:
@@ -150,20 +144,19 @@ if page == "Main":
                     total_paragraphs_tokens = []
                     unique_cases = set()
 
-                    # Extract data from file_meta_data_information
                     for item in data:
                         if 'file_meta_data_information' in item:
                             for meta_data in item['file_meta_data_information']:
-                                percentages.append(meta_data.get('percentage', 0) * 100)  # Convert to percentage
+                                percentages.append(meta_data.get('percentage', 0) * 100)
                                 query_tokens.append(meta_data.get('query_tokens', 0))
-                                relevant_paragraphs_tokens.append(meta_data.get('relevant_paragraphs_tokens', 0))
-                                # Count total_paragraphs_tokens only for unique case_links
-                                case_link = meta_data.get('case_link')
-                                if case_link not in unique_cases:
-                                    total_paragraphs_tokens.append(meta_data.get('total_paragraphs_tokens', 0))
-                                    unique_cases.add(case_link)
 
-                    # Calculate mean and median
+                                relevant_paragraphs_tokens.extend(meta_data.get('relevant_paragraphs_tokens', []))
+                                
+                                case_link = meta_data.get('case_link')
+                                
+                                if case_link not in unique_cases:
+                                    total_paragraphs_tokens.extend(meta_data.get('total_paragraphs_tokens', []))
+                                    unique_cases.add(case_link)
                     mean_percentage = np.mean(percentages)
                     median_percentage = np.median(percentages)
                     mean_tokens = np.mean(query_tokens)
@@ -173,61 +166,56 @@ if page == "Main":
                     mean_total_tokens = np.mean(total_paragraphs_tokens)
                     median_total_tokens = np.median(total_paragraphs_tokens)
 
-                    # Count occurrences of each value for percentages, query tokens, relevant and total tokens
                     percentage_counts = Counter(percentages)
                     query_tokens_counts = Counter(query_tokens)
                     relevant_tokens_counts = Counter(relevant_paragraphs_tokens)
                     total_tokens_counts = Counter(total_paragraphs_tokens)
 
-                    # Plotting the percentage distribution (discrete values)
                     fig1, ax1 = plt.subplots(figsize=(8, 6))
                     ax1.bar(percentage_counts.keys(), percentage_counts.values(), color='salmon', width=0.2)
                     ax1.axvline(mean_percentage, color='black', linestyle='--', label='Mean')
                     ax1.axvline(median_percentage, color='orange', linestyle='--', label='Median')
-                    ax1.set_xlim(-2, max(percentage_counts.keys()) + 5)  # Adjust x-axis limits to focus on the relevant data
-                    ax1.set_ylim(0, max(percentage_counts.values()) + 5)  # Scale y-axis appropriately
+                    ax1.set_xlim(-2, max(percentage_counts.keys()) + 5)
+                    ax1.set_ylim(0, max(percentage_counts.values()) + 5)
                     ax1.set_title('% of relevant paragraphs per judgement')
                     ax1.set_xlabel('Percentage')
                     ax1.set_ylabel('Frequency')
                     ax1.legend()
                     st.pyplot(fig1)
 
-                    # Plotting the query tokens distribution (discrete values)
                     fig2, ax2 = plt.subplots(figsize=(8, 6))
-                    ax2.bar(query_tokens_counts.keys(), query_tokens_counts.values(), color='salmon', width=1)
+                    ax2.bar(query_tokens_counts.keys(), query_tokens_counts.values(), color='#D8BFD8', width=1)
                     ax2.axvline(mean_tokens, color='black', linestyle='--', label='Mean')
                     ax2.axvline(median_tokens, color='orange', linestyle='--', label='Median')
-                    ax2.set_xlim(-2, max(query_tokens_counts.keys()) + 2)  # Adjust x-axis limits to add space before 0 and at the end
-                    ax2.set_ylim(0, max(query_tokens_counts.values()) + 10)  # Scale y-axis appropriately
+                    ax2.set_xlim(-2, max(query_tokens_counts.keys()) + 2)
+                    ax2.set_ylim(0, max(query_tokens_counts.values()) + 10)
                     ax2.set_title('Number of tokens per query')
                     ax2.set_xlabel('Query Tokens')
                     ax2.set_ylabel('Frequency')
                     ax2.legend()
                     st.pyplot(fig2)
 
-                    # Plotting the relevant paragraphs tokens distribution
                     fig3, ax3 = plt.subplots(figsize=(8, 6))
                     ax3.bar(relevant_tokens_counts.keys(), relevant_tokens_counts.values(), color='lightblue', width=10)
                     ax3.axvline(mean_relevant_tokens, color='black', linestyle='--', label='Mean')
                     ax3.axvline(median_relevant_tokens, color='orange', linestyle='--', label='Median')
-                    ax3.set_xlim(-200, max(relevant_tokens_counts.keys()) + 20)  # Adjust x-axis limits to add space before 0 and at the end
-                    ax3.set_ylim(0, max(relevant_tokens_counts.values()) + 5)  # Scale y-axis appropriately
+                    ax3.set_xlim(-200, max(relevant_tokens_counts.keys()) + 20)
+                    ax3.set_ylim(0, max(relevant_tokens_counts.values()) + 5)
                     ax3.set_title('Relevant Paragraph Tokens Distribution')
                     ax3.set_xlabel('Relevant Paragraph Tokens')
                     ax3.set_ylabel('Frequency')
                     ax3.legend()
                     st.pyplot(fig3)
 
-                    # Plotting the total paragraphs tokens distribution
                     fig4, ax4 = plt.subplots(figsize=(8, 6))
-                    ax4.bar(total_tokens_counts.keys(), total_tokens_counts.values(), color='lightgreen', width=500)
+                    ax4.bar(total_tokens_counts.keys(), total_tokens_counts.values(), color='lightgreen', width=10)
                     ax4.axvline(mean_total_tokens, color='black', linestyle='--', label='Mean')
                     ax4.axvline(median_total_tokens, color='orange', linestyle='--', label='Median')
-                    ax4.set_xlim(-2, max(total_tokens_counts.keys()) + 1000)  # Adjust x-axis limits to add space before 0 and at the end
-                    ax4.set_ylim(0, max(total_tokens_counts.values()) + 5)  # Scale y-axis appropriately
-                    ax4.set_title('Total Paragraph Tokens Distribution')
+                    ax4.set_xlim(-200, max(total_tokens_counts.keys()) + 20)
+                    ax4.set_ylim(0, max(total_tokens_counts.values()) + 1000)
+                    ax4.set_title('Total Paragraph Tokens Distribution (Log Scale on Y-Axis)')
                     ax4.set_xlabel('Total Paragraph Tokens')
-                    ax4.set_ylabel('Frequency')
+                    ax4.set_ylabel('Frequency (log scale)')
                     ax4.legend()
                     st.pyplot(fig4)
 
@@ -235,8 +223,7 @@ if page == "Main":
                     st.error("The selected JSON file does not contain a list of data points.")
             else:
                 st.error("File not found. Please check the filename and try again.")
-
-        # Adding Histogram for Query-Doc Pairs and Unique Queries for All Languages
+                
         st.title("Query-Doc Pairs and Unique Queries Across All Languages")
 
         languages_data = []
@@ -249,19 +236,17 @@ if page == "Main":
                 num_unique_queries = counts_data.get("number_of_unique_queries", 0)
                 languages_data.append((lang.capitalize(), num_q_d_pairs, num_unique_queries))
 
-        # Prepare data for plotting
         labels = [item[0] for item in languages_data]
         q_d_pairs = [item[1] for item in languages_data]
         unique_queries = [item[2] for item in languages_data]
 
-        x = np.arange(len(labels))  # the label locations
-        width = 0.35  # the width of the bars
+        x = np.arange(len(labels))
+        width = 0.35
 
         fig6, ax6 = plt.subplots(figsize=(10, 6))
         bars1 = ax6.bar(x - width/2, q_d_pairs, width, label='Query-Doc Pairs')
         bars2 = ax6.bar(x + width/2, unique_queries, width, label='Unique Queries')
 
-        # Add some text for labels, title and custom x-axis tick labels, etc.
         ax6.set_xlabel('Languages')
         ax6.set_ylabel('Count')
         ax6.set_title('Query-Doc Pairs and Unique Queries by Language')
@@ -269,14 +254,13 @@ if page == "Main":
         ax6.set_xticklabels(labels)
         ax6.legend()
 
-        # Attach a text label above each bar in *bars1* and *bars2*, displaying its height.
         def autolabel(bars):
             """Attach a text label above each bar in *bars*, displaying its height."""
             for bar in bars:
                 height = bar.get_height()
                 ax6.annotate(f'{height}',
                             xy=(bar.get_x() + bar.get_width() / 2, height),
-                            xytext=(0, 3),  # 3 points vertical offset
+                            xytext=(0, 3),
                             textcoords="offset points",
                             ha='center', va='bottom')
 
