@@ -33,8 +33,15 @@ class Inference:
         for points in self.data_points:
             query_encodings, all_paragraph_encodings = self._encode_queries_paragraphs(query=points["query"], all_paragraphs=points["all_paragraphs"], query_encoder=encoder, parar_encoder=encoder)
             faiss = FaissVectorDB()
-            faiss.main(paragraphs=all_paragraph_encodings, query=query_encodings, number_of_relevant_paragraphs=5)
-
+            distances, ann = faiss.main(paragraphs=all_paragraph_encodings, query=query_encodings, number_of_relevant_paragraphs=5)
+            results.append({
+                    "query": points["query"],
+                    "relevant_paragraphs": [points["all_paragraphs"][idx] for idx in ann],
+                    "paragraph_numbers": [para_num + 1 for para_num in ann],
+                    "distnaces": distances
+                }
+            )
+        print(results)
 if __name__=="__main__":
     inference_file = "/home/upadro/code/thesis/src/models/single_datapoints/common/test.json"
     bulk_inference = True
