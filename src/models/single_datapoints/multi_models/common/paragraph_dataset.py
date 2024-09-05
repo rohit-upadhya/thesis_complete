@@ -12,10 +12,9 @@ class DualEncoderDataset(Dataset):
         return len(self.examples)
 
     def __getitem__(self, idx):
-        query, paragraph, label = self.examples[idx]
-        
+        combined_query, paragraph, label, case_name, case_link = self.examples[idx]
         query_encoding = self.query_tokenizer.encode_plus(
-            query,
+            combined_query,
             max_length=self.max_length,
             add_special_tokens=True,
             return_token_type_ids=False,
@@ -35,11 +34,13 @@ class DualEncoderDataset(Dataset):
             return_attention_mask=True,
             return_tensors='pt',
         )
+        qid = f"{case_name}_{case_link}_{combined_query}"
 
         return {
             'query_input_ids': query_encoding['input_ids'].squeeze(),
             'query_attention_mask': query_encoding['attention_mask'].squeeze(),
             'paragraph_input_ids': paragraph_encoding['input_ids'].squeeze(),
             'paragraph_attention_mask': paragraph_encoding['attention_mask'].squeeze(),
-            'labels': torch.tensor(label, dtype=torch.float)
+            'labels': label,#torch.tensor(label, dtype=torch.float),
+            'qid': qid
         }
