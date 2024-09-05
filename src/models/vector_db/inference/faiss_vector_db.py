@@ -22,7 +22,7 @@ class FaissVectorDB:
         distances, ann = self.index.search(self.search_vector, k=k)
         return distances, ann
     
-    def main(self, paragraphs, query, number_of_relevant_paragraphs):
+    def main(self, paragraphs, query, number_of_relevant_paragraphs=5):
         self.build_index(np.array(paragraphs))
         self.build_search_vector(np.array(query))
         distances, ann = self.perform_search(number_of_relevant_paragraphs)
