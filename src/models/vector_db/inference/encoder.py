@@ -3,7 +3,11 @@ from typing import List
 import torch
 
 class Encoder:
-    def __init__(self, model_name = 'bert-base-multilingual-cased') -> None:
+    def __init__(self, 
+                model_name: str = 'bert-base-multilingual-cased',
+                device: str = 'cpu'
+                ) -> None:
+        self.device = torch.device(device)
         self.model_name = model_name
         self._load_tokenizer()
         self._load_model()
@@ -16,9 +20,11 @@ class Encoder:
     def _load_model(self):
         self.model = BertModel.from_pretrained(self.model_name)
         self.model.resize_token_embeddings(len(self.tokenizer))
+        self.model.to(self.device)
     
     def encode(self, sentences: List):
         inputs = self.tokenizer(sentences, return_tensors='pt', padding=True, truncation=True, max_length=512)
+        inputs = {key: value.to(self.device) for key, value in inputs.items()}  # Ensure inputs are on the correct device
         
         with torch.no_grad():
             outputs = self.model(**inputs)
