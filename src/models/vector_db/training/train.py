@@ -141,7 +141,7 @@ class ContrastiveTrainer:
             print(f"Epoch {epoch + 1}, Validation Loss: {avg_val_loss}, Validation Accuracy: {accuracy}")
 
         
-        model_dir = self.config["save_path"].format(date_of_training=current_date())
+        model_dir = self.config["save_path"].format(date_of_training=current_date()) # type: ignore
         print(model_dir)
         self.save_model(model_dir=model_dir, query_model=model.query_model, paragraph_model=model.paragraph_model, query_tokenizer=query_tokenizer, paragraph_tokenizer=paragraph_tokenizer)
         
