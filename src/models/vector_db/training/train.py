@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from transformers import BertTokenizer, BertModel, BertTokenizer
 import torch.optim as optim
 from sklearn.model_selection import train_test_split
-from typing import Text
+from typing import Text, Optional
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
@@ -14,11 +14,12 @@ from src.models.single_datapoints.common.utils import current_date
 from src.models.vector_db.training.sampler import BatchSampler
 @dataclass
 class ContrastiveTrainer:
-    data_file: Text = None
-    config_file: Text = None
+    data_file: Optional[Text] = None
+    config_file: Optional[Text] = None
     batch_size: int = 8
     val_batch_size: int = 4
     epochs: int = 1
+    device: str = 'cpu'
     def __post_init__(self):
         
         if self.data_file is None:
@@ -28,17 +29,17 @@ class ContrastiveTrainer:
         
         self.input_loader:InputLoader = InputLoader()
         self.config = self.input_loader.load_config(self.config_file)
-        self.config = self.config["dual_encoder"]
+        self.config = self.config["dual_encoder"] # type: ignore
         
     def tokenizer(self, model_name_or_path):
         tokenizer = BertTokenizer.from_pretrained(model_name_or_path)
         return tokenizer
     
     def load_data(self):
-        data = self.input_loader.load_data(self.data_file)
+        data = self.input_loader.load_data(self.data_file) # type: ignore
         
         examples = []
-        for item in data:
+        for item in data: # type: ignore
             combined_query = ' '.join(item['query'])
             case_name = item['case_name']
             case_link = item['link']
@@ -56,7 +57,10 @@ class ContrastiveTrainer:
         paragraph_tokenizer.save_pretrained(f'{model_dir}/paragraph_tokenizer')
         
     def main(self):
-        device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
+        if 'cuda' in self.device:
+            device = torch.device(self.device if torch.cuda.is_available() else 'cpu')
+        else:
+            device = torch.device('cpu')
         print(f"Using device: {device}")
 
         examples = self.load_data()
@@ -99,7 +103,7 @@ class ContrastiveTrainer:
                 labels = batch['labels'].to(device).float() 
                 
                 outputs = model(query_input_ids, query_attention_mask, paragraph_input_ids, paragraph_attention_mask)
-                loss = criterion(log_softmax(outputs.squeeze(-1).unsqueeze(0)), torch.zeros(1,dtype=int).to(device))
+                loss = criterion(log_softmax(outputs.squeeze(-1).unsqueeze(0)), torch.zeros(1,dtype=int).to(device)) # type: ignore
                 # loss = criterion(outputs, labels)
                 total_loss += loss.item()
                 
@@ -123,7 +127,7 @@ class ContrastiveTrainer:
                     labels = batch['labels'].to(device).float()
 
                     outputs = model(query_input_ids, query_attention_mask, paragraph_input_ids, paragraph_attention_mask)
-                    loss = criterion(log_softmax(outputs.squeeze(-1).unsqueeze(0)), torch.zeros(1,dtype=int).to(device))
+                    loss = criterion(log_softmax(outputs.squeeze(-1).unsqueeze(0)), torch.zeros(1,dtype=int).to(device)) # type: ignore
                     # loss = criterion(outputs, labels)
                     total_val_loss += loss.item()
 
@@ -146,6 +150,7 @@ if __name__ == "__main__":
     config_file = "src/models/single_datapoints/common/config.yaml"
     trainer = ContrastiveTrainer(
         data_file=data_file,
-        config_file=config_file
+        config_file=config_file,
+        device='cuda:3'
     )
     trainer.main()
