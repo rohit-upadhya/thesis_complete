@@ -1,5 +1,6 @@
-from typing import Text, List, Dict, Any
+from typing import Text, List, Dict, Any, Optional
 import numpy as np
+import os
 
 from src.models.vector_db.commons.input_loader import InputLoader
 from src.models.vector_db.inference.encoder import Encoder
@@ -8,15 +9,14 @@ from src.models.vector_db.inference.faiss_vector_db import FaissVectorDB
 class Inference:
     def __init__(
             self, 
-            inference_file: Text = None, 
-            inference_datapoints: List[Dict[str, Any]] = None, 
+            inference_folder: Optional[Text] = None, 
+            inference_datapoints: Optional[List[Dict[str, Any]]] = None, 
             bulk_inference: bool = False, 
             number_of_relevant_paragraphs: int = 5,
             device: str = "cpu"
         ):
-        input_loader = InputLoader()
         if bulk_inference:
-            inference_datapoints = input_loader.load_data(inference_file)
+            inference_datapoints = self._load_all_input_from_dir(inference_folder)
         self._format_input(inference_datapoints)
         self.number_of_relevant_paragraphs = number_of_relevant_paragraphs
         self.encoder = Encoder(device=device)
@@ -24,6 +24,21 @@ class Inference:
         self.all_paragraph_encodings = []
         self.all_unique_keys = []
         self.query_paragraph_mapping = {}
+    
+    def _load_all_input_from_dir(self, input_data_path):
+        files = []
+        for (dirpath, dirnames, filenames) in os.walk(input_data_path):
+            for filename in filenames:
+                if "json" in filename:
+                    files.append(os.path.join(dirpath, filename))
+        input_loader = InputLoader()
+        total_inference_datapoints = []
+        for file in files:
+            individual_datapoints = input_loader.load_data(data_file=file)
+            print(len(individual_datapoints)) # type: ignore
+            total_inference_datapoints.extend(individual_datapoints) # type: ignore
+        return total_inference_datapoints
+        
     
     def _format_input(self, inference_datapoints):
         self.data_points = []
@@ -53,11 +68,6 @@ class Inference:
     def _encode_query(self, query: Text):
         return self.encoder.encode([query]).cpu().numpy()
 
-    # def _encode_queries_paragraphs(self, query: Text, all_paragraphs: List[Text], query_encoder: Encoder, parar_encoder: Encoder):
-    #     query_encodings = query_encoder.encode([query]).cpu().numpy()  # Keep in NumPy
-    #     all_paragraph_encodings = parar_encoder.encode(all_paragraphs).cpu().numpy()  # Convert to NumPy for FAISS
-    #     return query_encodings, all_paragraph_encodings
-    
     def main(self):
         self._encode_all_paragraphs()
         results = []
@@ -81,10 +91,10 @@ class Inference:
         print(results)
 
 if __name__ == "__main__":
-    inference_file = "/home/upadro/code/thesis/src/models/single_datapoints/common/test.json"
+    inference_folder = "/home/upadro/code/thesis/src/models/single_datapoints/common"
     bulk_inference = True
     inference = Inference(
-        inference_file=inference_file, 
+        inference_folder=inference_folder, 
         bulk_inference=bulk_inference,
         device='cuda:3'
     )
