@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import math
 
 def loads_json(load_file_name):
     with open(load_file_name, "r", encoding="utf-8") as stream:
@@ -31,10 +32,10 @@ if __name__=="__main__":
                 query_dict[" ".join(item["query"])] = 1
             else:
                 query_dict[" ".join(item["query"])] += 1
-        sorted_dict = dict(sorted(query_dict.items(), key=lambda item: item[1], reverse=True))
+        sorted_dict = dict(sorted(query_dict.items(), key=lambda item: item[1]))
         sorted_keys = [key for key, value in sorted_dict.items()]
         
-        top_20_percent = int(len(sorted_keys) * 0.2)
+        top_20_percent = int(math.ceil(len(sorted_keys) * 0.2))
         top_20_list = sorted_keys[:top_20_percent]
         remaining_80_list = sorted_keys[top_20_percent:]
         random.shuffle(top_20_list)
