@@ -2,6 +2,9 @@ import json
 import os
 from typing import List, Dict, Any, Text
 import math
+from transformers import BertTokenizer
+
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # file_path = os.path.abspath(__file__)
 # base_path = os.path.join(file_path.split("thesis")[0],"thesis")
 
@@ -17,9 +20,9 @@ def find_number_of_docs(json_dict):
     case_name = json_dict['case_name']
     percentage = relevant_paragraphs/total_paragraphs
     percentage = round(percentage, 4)
-    query_tokens = (" ".join(json_dict["query"])).split()
-    relevant_paragraphs_tokens = [len(" ".join(paragraphs).split()) for paragraphs in json_dict["relevant_paragrpahs"]]
-    total_paragraphs_tokens = [len(" ".join(paragraphs).split()) for paragraphs in json_dict["all_paragraphs"]]
+    query_tokens = tokenizer.tokenize(" ".join(json_dict["query"]))
+    relevant_paragraphs_tokens = [len(tokenizer.tokenize(" ".join(paragraph))) for paragraph in json_dict["relevant_paragrpahs"]]
+    total_paragraphs_tokens = [len(tokenizer.tokenize(" ".join(paragraph))) for paragraph in json_dict["all_paragraphs"]]
     return relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len(query_tokens), relevant_paragraphs_tokens, total_paragraphs_tokens
 
 def make_data_dictionary(relevant_paragraphs, total_paragraphs, case_link, percentage, case_name, query_tokens, len_query_tokens, file, relevant_paragraphs_tokens, total_paragraphs_tokens):
@@ -70,7 +73,7 @@ def run_percentage(files):
             "file_meta_data_information": file_meta_data
         })
         
-    output_data_path = "data_analysis/specifics"
+    output_data_path = "/srv/upadro/data_analysis/train/specifics"
     dump_json(output_data_path,meta_data_information)
     print("min ",min_)
     print("max ",max_)
@@ -86,10 +89,10 @@ def run_unique_number_queries(files):
         "number_of_q_d_pairs": len(queries),
         "number_of_unique_queries": len(unique_queries)
     }
-    dump_json(path="data_analysis/counts",data=json_data)
+    dump_json(path="/srv/upadro/data_analysis/train/counts",data=json_data)
 
 if __name__=="__main__":
-    input_data_path = "output/french/done"
+    input_data_path = "/srv/upadro/dataset/french/train"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(input_data_path):
         for filename in filenames:
