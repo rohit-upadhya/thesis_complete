@@ -2,9 +2,9 @@ import json
 import os
 from typing import List, Dict, Any, Text
 import math
-from transformers import BertTokenizer
+from transformers import BertTokenizerFast
 
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
 # file_path = os.path.abspath(__file__)
 # base_path = os.path.join(file_path.split("thesis")[0],"thesis")
 
@@ -73,7 +73,7 @@ def run_percentage(files):
             "file_meta_data_information": file_meta_data
         })
         
-    output_data_path = "/srv/upadro/data_analysis/train/specifics"
+    output_data_path = "/srv/upadro/data_analysis/unseen_docs/test/specifics"
     dump_json(output_data_path,meta_data_information)
     print("min ",min_)
     print("max ",max_)
@@ -89,10 +89,10 @@ def run_unique_number_queries(files):
         "number_of_q_d_pairs": len(queries),
         "number_of_unique_queries": len(unique_queries)
     }
-    dump_json(path="/srv/upadro/data_analysis/train/counts",data=json_data)
+    dump_json(path="/srv/upadro/data_analysis/unseen_docs/test/counts",data=json_data)
 
 if __name__=="__main__":
-    input_data_path = "/srv/upadro/dataset/french/train"
+    input_data_path = "/srv/upadro/dataset/french/unseen_docs/test"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(input_data_path):
         for filename in filenames:
@@ -101,10 +101,3 @@ if __name__=="__main__":
     
     run_percentage(files)
     run_unique_number_queries(files)
-    
-    
-    
-    
-    
-        
-        
