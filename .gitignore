@@ -14,3 +14,4 @@ output/*/*/*.json
 *.pyc
 */*/*/*.json
 model_output/*
+**/*.log
