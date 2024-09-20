@@ -37,35 +37,22 @@ class FaissVectorDB:
 
         for i, key in enumerate(unique_keys):
             self.paragraph_key_mapping[current_index_size + i] = key
-
-    # def build_search_vector(self, search_vector):
-    #     if len(search_vector.shape) == 1:
-    #         self.search_vector = np.expand_dims(search_vector, axis=0).astype('float32')
-    #     else:
-    #         self.search_vector = search_vector.astype('float32')
-    #     faiss.normalize_L2(self.search_vector)
     
-    # def perform_search(self, k):
-    #     distances, ann = self.index.search(self.search_vector, k=k)
-    #     return distances, ann
-    
-    def perform_search_with_indices(self, query, subset_indices, number_of_relevant_paragraphs=5):
-        # Extract the relevant vectors on CPU and perform the search there
-        subset_vectors = np.take(self.index.reconstruct_n(0, self.index.ntotal), subset_indices, axis=0)
-        index_subset = faiss.IndexFlatL2(subset_vectors.shape[1])  # Create CPU FAISS index for subset search
-        index_subset.add(subset_vectors)
+    def perform_search(self, query, number_of_results=5, datapoint: dict={}):
+        
 
-        # Perform the search on the subset
-        distances, ann = index_subset.search(query, number_of_relevant_paragraphs)
+        query = query.astype('float32')
+        faiss.normalize_L2(query)
 
-        # Map the results back to the original FAISS index's keys
-        relevant_paragraph_keys = [self.paragraph_key_mapping[subset_indices[idx]] for idx in ann[0]]
-        return distances[0], relevant_paragraph_keys
+        distances, ann = self.index.search(query, k=self.index.ntotal)
+
+        paragraph_keys = [self.paragraph_key_mapping[idx] for idx in ann[0]]
+        relevant_paragraph_keys = self.obtain_relevant_paras(all_paragraphs_keys=paragraph_keys, number_of_results=number_of_results, datapoint=datapoint)
+        return relevant_paragraph_keys
     
-    # def main(self, paragraphs, query, unique_keys, number_of_relevant_paragraphs=5):
-    #     self.build_index(np.array(paragraphs), unique_keys)
-    #     self.build_search_vector(np.array(query))
-    #     distances, ann = self.perform_search(number_of_relevant_paragraphs)
-    #     print(len(self.paragraph_key_mapping))
-    #     relevant_paragraph_keys = [self.paragraph_key_mapping[idx] for idx in ann[0]]
-    #     return distances[0], relevant_paragraph_keys
+    def obtain_relevant_paras(self, all_paragraphs_keys: list, number_of_results: int, datapoint) -> list:
+        all_relevant_paragraphs = []
+        for para_keys in all_paragraphs_keys:
+            if datapoint["link"] in para_keys:
+                all_relevant_paragraphs.append(para_keys)
+        return all_relevant_paragraphs[:number_of_results]
