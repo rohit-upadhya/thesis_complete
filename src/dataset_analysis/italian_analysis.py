@@ -5,8 +5,6 @@ import math
 from transformers import BertTokenizerFast
 
 tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
-# file_path = os.path.abspath(__file__)
-# base_path = os.path.join(file_path.split("thesis")[0],"thesis")
 
 def extract_output_jsons(file_name):
     with open(file_name, "r", encoding="utf-8") as stream:
@@ -43,7 +41,7 @@ def dump_json(path, data):
         json.dump(data, file, indent=4, ensure_ascii=False,)
     pass
 
-def run_percentage(files):
+def run_percentage(files, split):
     
     meta_data_information: List[Dict[Text,Any]] = []
     max_ = 0
@@ -73,12 +71,12 @@ def run_percentage(files):
             "file_meta_data_information": file_meta_data
         })
         
-    output_data_path = "/srv/upadro/data_analysis/unseen_docs/test/specifics"
+    output_data_path = f"/srv/upadro/data_analysis/unseen_queries/{split}/specifics"
     dump_json(output_data_path,meta_data_information)
     print("min ",min_)
     print("max ",max_)
 
-def run_unique_number_queries(files):
+def run_unique_number_queries(files, split):
     queries = []
     for file in files:
         json_data = extract_output_jsons(file)
@@ -89,15 +87,28 @@ def run_unique_number_queries(files):
         "number_of_q_d_pairs": len(queries),
         "number_of_unique_queries": len(unique_queries)
     }
-    dump_json(path="/srv/upadro/data_analysis/unseen_docs/test/counts",data=json_data)
+    dump_json(path=f"/srv/upadro/data_analysis/unseen_queries/{split}/counts",data=json_data)
 
 if __name__=="__main__":
-    input_data_path = "/srv/upadro/dataset/italian/unseen_docs/test"
-    files = []
-    for (dirpath, dirnames, filenames) in os.walk(input_data_path):
-        for filename in filenames:
-            if "json" in filename:
-                files.append(os.path.join(dirpath, filename))
+    train_data_path = "/srv/upadro/dataset/italian/unseen_queries/train"
+    test_data_path = "/srv/upadro/dataset/italian/unseen_queries/test"
+    unique_query_test_data_path = "/srv/upadro/dataset/italian/unseen_queries/unique_query_test"
+    val_data_path = "/srv/upadro/dataset/italian/unseen_queries/val"
+    train_test_val = "/srv/upadro/dataset/italian/unseen_queries/train_test_val"
+    data_paths = [train_data_path, test_data_path, val_data_path, unique_query_test_data_path, train_test_val]
+    for input_data_path in data_paths:
+        files = []
+        for (dirpath, dirnames, filenames) in os.walk(input_data_path):
+            for filename in filenames:
+                if "json" in filename:
+                    files.append(os.path.join(dirpath, filename))
+        split = input_data_path.split("/")[-1]
+        run_percentage(files, split)
+        run_unique_number_queries(files, split)
     
-    run_percentage(files)
-    run_unique_number_queries(files)
+    
+    
+    
+    
+        
+        
