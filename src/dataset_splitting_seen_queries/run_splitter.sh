@@ -1,0 +1,9 @@
+#!/bin/bash
+
+python src/dataset_splitting_seen_queries/english_splitter.py
+python src/dataset_splitting_seen_queries/french_splitter.py
+python src/dataset_splitting_seen_queries/italian_splitter.py
+python src/dataset_splitting_seen_queries/romanian_splitter.py
+python src/dataset_splitting_seen_queries/russian_splitter.py
+python src/dataset_splitting_seen_queries/turkish_splitter.py
+python src/dataset_splitting_seen_queries/ukrainian_splitter.py
