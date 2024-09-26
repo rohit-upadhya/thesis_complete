@@ -1,12 +1,12 @@
-import streamlit as st
+import streamlit as st # type: ignore
 import json
 import os
-import numpy as np
-import matplotlib.pyplot as plt
+import numpy as np # type: ignore
+import matplotlib.pyplot as plt # type: ignore
 from collections import Counter
 
 # Base path for JSON files
-BASE_PATH = "/home/upadro/code/thesis/output"
+BASE_PATH = "/home/upadro/code/thesis/output/dataset_outputs"
 RESULTS_PATH = "/home/upadro/code/thesis/output/visualizations"
 ANALYTICS_PATH = "/home/upadro/code/thesis/data_analysis/specifics"
 COUNTS_PATH = "/home/upadro/code/thesis/data_analysis/counts"
@@ -76,7 +76,7 @@ if page == "Main":
         language = st.selectbox("Select language", LANGUAGES, index=LANGUAGES.index(DEFAULT_LANGUAGE), key="language_checker")
 
         if language:
-            foldername = os.path.join(BASE_PATH, language, "done")
+            foldername = os.path.join(BASE_PATH, language, "unique_query_test")
             if os.path.exists(foldername):
                 json_files = list_json_files(foldername)
                 
