@@ -1,6 +1,6 @@
 import os
 import fitz  # PyMuPDF
-from src.commons import utils
+from src.dataset.commons import utils
 import csv
 import json
 
@@ -10,16 +10,16 @@ def normalize_link(link):
     return link
 
 def scrape(filePath):
-    results = []
-    pdf = fitz.open(filePath)
+    results = []  # list of tuples that store the information as (text, font size, font name, link)
+    pdf = fitz.open(filePath)  # filePath is a string that contains the path to the pdf
 
     for page_num, page in enumerate(pdf):
-        if page_num < 5:
+        if page_num < 5:  # Skip the first three pages (0, 1, 2)
             continue
         # Extract text and its properties
         dict = page.get_text("dict")
         blocks = dict["blocks"]
-        links = page.get_links()
+        links = page.get_links()  # Get all links on the page
 
         for block in blocks:
             if "lines" in block.keys():
@@ -196,7 +196,6 @@ def build_query(results):
             parts = item[0].split(". ")
             headings = " ".join(parts[1:])
             query_tuple.append(headings.strip())
-            # query_tuple.append(item[0].split(". ")[-1].strip())
         final_results.append((text, size, font, link, query_tuple))
     return final_results
 
@@ -301,12 +300,12 @@ def convert_to_json(final_result, file_name = "results.json"):
         json_result.append(entry)
 
     # Write the JSON object to a file
-    file_name = os.path.join("output","english","jsons", file_name)
+    file_name = os.path.join("output", "ukrainian", "jsons", file_name)
     with open(file_name, "w+") as file:
         json.dump(json_result, file, ensure_ascii=False, indent=4)
         
 if __name__ == "__main__":
-    raw_data_path = "raw_data/english/"
+    raw_data_path = "raw_data/ukrainian/"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(raw_data_path):
         for filename in filenames:
@@ -314,7 +313,6 @@ if __name__ == "__main__":
                 files.append(os.path.join(dirpath, filename))
     # print(files)
     for file in files:
-        print(file)
         file_name = file.split("/")[-1].split(".pdf")[0]
         results = scrape(file)
         filtered_results = filter_results(results=results)
@@ -354,17 +352,16 @@ if __name__ == "__main__":
         print("relevant_results_triplet", len(relevant_results_triplet))
         print("unusable heading results : ", len(headings))
         print("unusable paragraph results : ", unusable)
-        print("usable results : ", len(final_result) - len(headings))
+        # print("usable results : ", len(final_result) - len(headings))
         
         
         
-        text_file_output =  os.path.join("output", "english","tests",f"english_results-{file_name}.txt")
+        text_file_output =  os.path.join("output", "ukrainian","tests",f"ukrainian_results-{file_name}.txt")
         with open(text_file_output, "w+") as file:
-            for result in results:
-                # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+            for result in relevant_results_triplet:
+                file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
                 # file.write(f"Query: {result[4]}, Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
-                # if result[1] > 12.5:
-                    file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
+                # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
         #         # file.write(f"Query: {result[4]}, Text: {result[0]}, Para No.: {result[5]} Size: {result[1]}, Font: {result[2]}, Link: {result[3]}, Paragraph: {result[6]}\n")
         #         # file.write("\n")
         # # make_csv(final_result)
@@ -374,14 +371,14 @@ if __name__ == "__main__":
         
         
         convert_to_json(file_name=f"{file_name}.json",final_result=final_result)
-        number_result_file_output =  os.path.join("output", "english", "english_number_results.txt")
+        number_result_file_output =  os.path.join("output", "ukrainian", "ukrainian_number_results.txt")
         with open(number_result_file_output, "a+") as file:
             file.write(f"Number of results in {file_name} = {len(final_result)}\t || Usable results  = {len(final_result) - unusable}\n")
 
-        # unusable_docs =  os.path.join("output", "english", "unusable_docw_results.txt")
-        # with open(unusable_docs, "a+") as file:
-        #     for element in headings:
-        #         file.write(f"{element}\n")
+        unusable_docs =  os.path.join("output", "ukrainian", "unusable_docw_results.txt")
+        with open(unusable_docs, "a+") as file:
+            for element in headings:
+                file.write(f"{element}\n")
 
     
         #         # file.write(f"Text: {result[0]}, Size: {result[1]}, Font: {result[2]}, Link: {result[3]}\n")
