@@ -16,3 +16,4 @@ output/
 */*/*/*.json
 model_output/*
 **/*.log
+**/input
