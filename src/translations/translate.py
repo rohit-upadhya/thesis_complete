@@ -69,8 +69,8 @@ def dump_data(language, data):
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # languages = ["french", "italian", "romanian", "russian", "turkish", "ukrainian"]
-    languages = ["russian"]
+    languages = ["french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+    # languages = ["russian"]
     model, tokenizer = load_model(device) 
     for language in tqdm(languages):
         print(language)
