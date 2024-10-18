@@ -4,8 +4,8 @@ import torch  # type: ignore
 
 class Encoder:
     def __init__(self, 
-                model_name: str = 'bert-base-multilingual-cased',
-                # model_name: str = 'bert-base-uncased',
+                # model_name: str = 'bert-base-multilingual-cased',
+                model_name: str = 'bert-base-uncased',
                 device: str = 'cpu'
                 ) -> None:
         self.device = torch.device(device)

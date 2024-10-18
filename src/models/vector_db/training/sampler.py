@@ -2,40 +2,76 @@ from torch.utils.data.sampler import BatchSampler
 import numpy as np
 
 class BatchSampler(BatchSampler):
-    def __init__(self, dataset, batch_size) -> None:
+    def __init__(self, dataset, batch_size, batch_counts) -> None:
         self.dataset = dataset
         self.batch_size = batch_size
-
-        self.query_ids = []
-        self.positive_indices = []
-        self.negative_indices = []
-        
+        self.batch_counts = batch_counts
+        self.query_pos_indices = {}
+        self.query_neg_indices = {}
         for idx, element in enumerate(dataset):
-            self.query_ids.append(element["qid"])
-            if element["labels"] == 1:
-                self.positive_indices.append(idx)
-            else:
-                self.negative_indices.append(idx)
+            query_id = element["qid"]
+            if query_id not in self.query_pos_indices:
+                self.query_pos_indices[query_id] = []
+                self.query_neg_indices[query_id] = []
 
-        self.unique_queries = list(set(self.query_ids))
+            if element["labels"] == 1:
+                self.query_pos_indices[query_id].append(idx)
+            else:
+                self.query_neg_indices[query_id].append(idx)
+
+        self.unique_queries = list(self.query_pos_indices.keys())
+        
+    # def __iter__(self):
+    #     np.random.shuffle(self.unique_queries)
+        
+    #     for query in self.unique_queries:
+    #         pos_samples = self.query_pos_indices.get(query, [])
+    #         neg_samples = self.query_neg_indices.get(query, [])
+            
+    #         if not pos_samples or not neg_samples:
+    #             continue
+            
+    #         for pos in pos_samples:
+    #             if len(neg_samples) >= self.batch_size - 1:
+    #                 batch = [pos] + neg_samples[:self.batch_size - 1]
+    #             else:
+    #                 batch = [pos] + neg_samples
+    #                 batch += neg_samples[:self.batch_size-1-len(batch)]
+    #             if len(batch)>self.batch_size:
+    #                 batch = batch[:self.batch_size]
+    #             print("insode batching ",len(batch))
+    #             yield batch
     def __iter__(self):
         np.random.shuffle(self.unique_queries)
         
         for query in self.unique_queries:
-            pos_samples = [i for i in self.positive_indices if self.dataset[i]['qid']==query]
-            neg_samples = [i for i in self.negative_indices if self.dataset[i]['qid']==query]
+            pos_samples = self.query_pos_indices.get(query, [])
+            neg_samples = self.query_neg_indices.get(query, [])
+            np.random.shuffle(neg_samples)
             
             if not pos_samples or not neg_samples:
                 continue
             
             for pos in pos_samples:
+                # Add positive sample
+                batch = [pos]
+                
+                # Add negative samples (either all or as many as needed)
                 if len(neg_samples) >= self.batch_size - 1:
-                    batch = [pos] + neg_samples[:self.batch_size - 1]
+                    batch += neg_samples[:self.batch_size - 1]
                 else:
-                    batch = [pos] + neg_samples
-                    batch += neg_samples[:self.batch_size-1-len(batch)]
-                batch = batch[:self.batch_size]
+                    batch += neg_samples
+                    # Add additional negatives (allow replacement to ensure batch size)
+                    while len(batch) < self.batch_size:
+                        batch.append(np.random.choice(neg_samples))
+                
+                # Now ensure the batch size is exactly batch_size
+                if len(batch) > self.batch_size:
+                    batch = batch[:self.batch_size]
+                
+                # Yield the batch
+                # print("Batch size inside batching: ", len(batch))  # Debugging statement
                 yield batch
     
     def __len__(self):
-        return len(self.unique_queries)
+        return self.batch_counts

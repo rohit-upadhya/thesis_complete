@@ -88,9 +88,10 @@ def calculate_recall(data_points, results):
 if __name__ == "__main__":
     input_folder = "input/inference_input/russian/unique_query_test"
     
-    languages = ["french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+    # languages = ["english","french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+    languages = ["english"]
     for language in tqdm(languages):
-        input_folder = f"input/inference_input/{language}/unique_query_test"
+        input_folder = f"input/inference_input/{language}/test"
         data = load_all_input_from_dir(input_folder, language)
         results = []
 
@@ -111,10 +112,10 @@ if __name__ == "__main__":
         print(f"Recall: {recall_scores}")
         
         recall_data = {}
-        with open(os.path.join('output/inference_outputs',f'recall_bm25.json'), 'r') as json_file:
+        with open(os.path.join('output/inference_outputs/test_datapoints',f'recall_bm25_test.json'), 'r') as json_file:
             recall_data = json.load(json_file)
 
         recall_data[language] = recall_scores
-        with open(os.path.join('output/inference_outputs',f'recall_bm25.json'), 'w+') as json_file:
+        with open(os.path.join('output/inference_outputs/test_datapoints',f'recall_bm25_test.json'), 'w+') as json_file:
             json.dump(recall_data, json_file, indent=4, ensure_ascii=False)
         print(recall_scores)
