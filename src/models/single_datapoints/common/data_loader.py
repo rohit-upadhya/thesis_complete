@@ -39,6 +39,8 @@ class InputLoader:
         with open(json_file, 'r') as file:
             try:
                 data = json.load(file)
+                for item in data:
+                    item["file"] = json_file
                 return data
             except json.JSONDecodeError as exc:
                 print(f"Error loading JSON file: {exc}")
