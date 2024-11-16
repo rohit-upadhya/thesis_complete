@@ -1,0 +1,9 @@
+,Language,unique_query_test,unique_query_test,train_test_val,train_test_val,train,test,val
+,,QDR Triplets,Queries,QDR Triplets,Queries,QDR Triplets,QDR Triplets,QDR Triplets
+0,english,902,126,6992,938,5614,690,688
+1,french,486,98,3638,705,2930,357,351
+2,italian,364,68,2948,509,2366,293,289
+3,romanian,495,105,3841,723,3088,378,375
+4,russian,155,15,1067,104,858,105,104
+5,turkish,517,82,4515,634,3628,444,443
+6,ukrainian,230,31,1669,219,1341,164,164
