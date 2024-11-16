@@ -5,20 +5,21 @@ from transformers import BertModel
 
 class ContrastiveModel(nn.Module):
     def __init__(self, model_name_or_path):
+        print("inside_single model")
         super(ContrastiveModel, self).__init__()
-        self.bert = BertModel.from_pretrained(model_name_or_path)
+        self.encoder = BertModel.from_pretrained(model_name_or_path)
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, query_inputs, pos_inputs, neg_inputs):
     # Process query
-        query_output = self.bert(
+        query_output = self.encoder(
             input_ids=query_inputs['input_ids'],
             attention_mask=query_inputs['attention_mask']
         )
         query_embedding = self.dropout(query_output.pooler_output)  # Shape: [batch_size, hidden_size]
 
         # Process positive samples
-        pos_output = self.bert(
+        pos_output = self.encoder(
             input_ids=pos_inputs['input_ids'],
             attention_mask=pos_inputs['attention_mask']
         )
@@ -31,7 +32,7 @@ class ContrastiveModel(nn.Module):
         neg_input_ids = neg_inputs['input_ids'].view(batch_size * num_negatives, seq_length)
         neg_attention_mask = neg_inputs['attention_mask'].view(batch_size * num_negatives, seq_length)
 
-        neg_output = self.bert(
+        neg_output = self.encoder(
             input_ids=neg_input_ids,
             attention_mask=neg_attention_mask
         )

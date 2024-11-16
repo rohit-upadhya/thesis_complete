@@ -191,13 +191,11 @@ class ContrastiveTrainer:
                 outputs = model(query_input_ids, query_attention_mask, paragraph_input_ids, paragraph_attention_mask)
                 log_probs = log_softmax(outputs.squeeze(-1).unsqueeze(0))
                 # outputs = model(**batch)
-                print(log_probs)
                 # Use BCEWithLogitsLoss directly on the cosine similarity outputs
                 # loss = criterion(outputs, labels)
                 # loss = criterion(log_probs, torch.zeros(self.batch_size, dtype=torch.long).to(self.device)) 
                 loss = criterion(log_probs, torch.zeros(1, dtype=torch.long).to(self.device)) 
                 total_loss += loss.item()
-                print(loss.item())
                 # Backpropagation
                 loss.backward()
                 optimizer.step()
@@ -275,8 +273,8 @@ class ContrastiveTrainer:
 
     
 if __name__ == "__main__":
-    train_data_folder = 'input/inference_input/russian/train_test_val'
-    val_data_folder = 'input/inference_input/russian/val'
+    # train_data_folder = 'input/train_infer/all/new_split/train-test-val'
+    # val_data_folder = 'input/train_infer/all/new_split/val'
     
     train_data_folder = 'input/test_train'
     val_data_folder = 'input/test_val'
