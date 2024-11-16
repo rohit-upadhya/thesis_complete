@@ -21,6 +21,8 @@ def load_model(device):
 
 
 def translate_batch(queries, model, tokenizer, device, source_language):
+    if source_language == 'english':
+        return queries
     target_lang = "eng_Latn"
     language_mapping = {"english": "eng_Latn", "french": "fra_Latn", "italian": "ita_Latn", "romanian": "ron_Latn", "russian": "rus_Cyrl", "turkish": "tur_Latn", "ukrainian": "ukr_Cyrl"}
     
@@ -41,12 +43,14 @@ def translate_batch(queries, model, tokenizer, device, source_language):
 
 
 def load_input(language):
-    input_data_path = os.path.join("output/dataset_outputs",language,"done")
+    input_data_paths = [os.path.join("input/train_infer",language,"new_split/test"), os.path.join("input/train_infer",language,"new_split/val"),os.path.join("input/train_infer",language,"new_split/train_test_val"), os.path.join("input/train_infer",language,"new_split/unique_query")]
     files = []
-    for (dirpath, dirnames, filenames) in os.walk(input_data_path):
-        for filename in filenames:
-            if "json" in filename:
-                files.append(os.path.join(dirpath, filename))
+    print(input_data_paths)
+    for input_data_path in input_data_paths:
+        for (dirpath, dirnames, filenames) in os.walk(input_data_path):
+            for filename in filenames:
+                if "json" in filename:
+                    files.append(os.path.join(dirpath, filename))
     input_loader = InputLoader()
     total_inference_datapoints = []
     for file in files:
@@ -68,8 +72,9 @@ def dump_data(language, data):
         json.dump(data, file, ensure_ascii=False, indent=4)
 
 if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    languages = ["french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+    # languages = ["english"]
     # languages = ["russian"]
     model, tokenizer = load_model(device) 
     for language in tqdm(languages):
@@ -77,7 +82,7 @@ if __name__ == "__main__":
         data = load_input(language)
         translations = []
         
-        batch_size = 16
+        batch_size = 64
         for i in tqdm(range(0, len(data), batch_size)):
             batch_queries = data[i:i+batch_size]
             
