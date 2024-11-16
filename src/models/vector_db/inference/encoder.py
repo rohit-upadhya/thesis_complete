@@ -1,5 +1,4 @@
-from transformers import BertTokenizer, BertModel  # type: ignore
-from transformers import DPRQuestionEncoder, DPRQuestionEncoderTokenizer, DPRContextEncoder, DPRContextEncoderTokenizer
+from transformers import BertTokenizer, BertModel, PreTrainedTokenizerFast, DPRQuestionEncoder, DPRQuestionEncoderTokenizer, DPRContextEncoder, DPRContextEncoderTokenizer, RobertaModel  # type: ignore
 from typing import List
 import torch  # type: ignore
 
@@ -13,7 +12,8 @@ class Encoder:
                 
                 # model_name: str = 'bert-base-uncased',
                 device: str = 'cpu',
-                use_dpr: bool = False
+                use_dpr: bool = False,
+                use_roberta: bool = False,
                 ) -> None:
         self.device = torch.device(device)
         self.question_model_name_or_path = question_model_name_or_path
@@ -21,10 +21,9 @@ class Encoder:
         print(self.question_model_name_or_path)
         print(self.ctx_model_name_or_path)
         self.use_dpr = use_dpr
+        self.use_roberta = use_roberta
         self._load_tokenizer()
         self._load_model()
-        print(self.question_model_name_or_path )
-        print(self.ctx_model_name_or_path)
             
     def _load_tokenizer(self):
         if self.use_dpr:
@@ -33,6 +32,11 @@ class Encoder:
             # self.ctx_tokenizer = DPRContextEncoderTokenizer.from_pretrained('facebook/dpr-ctx_encoder-single-nq-base', use_fast=False)
             
             self.ctx_tokenizer = DPRContextEncoderTokenizer.from_pretrained(self.ctx_model_name_or_path, use_fast=False)
+        elif self.use_roberta:
+            print("here",self.question_model_name_or_path)
+            self.question_tokenizer = PreTrainedTokenizerFast.from_pretrained(self.question_model_name_or_path, use_fast=True)
+            
+            self.ctx_tokenizer = PreTrainedTokenizerFast.from_pretrained(self.ctx_model_name_or_path,  use_fast=True)
         else:
             self.question_tokenizer = BertTokenizer.from_pretrained(self.question_model_name_or_path)
             
@@ -48,6 +52,9 @@ class Encoder:
         if self.use_dpr:
             self.question_model = DPRQuestionEncoder.from_pretrained(self.question_model_name_or_path).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
             self.ctx_model  = DPRContextEncoder.from_pretrained(self.ctx_model_name_or_path).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+        elif self.use_roberta:
+            self.question_model = RobertaModel.from_pretrained(self.question_model_name_or_path).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+            self.ctx_model = RobertaModel.from_pretrained(self.ctx_model_name_or_path).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
         else:
             self.question_model = BertModel.from_pretrained(self.question_model_name_or_path)
             self.ctx_model = BertModel.from_pretrained(self.ctx_model_name_or_path)

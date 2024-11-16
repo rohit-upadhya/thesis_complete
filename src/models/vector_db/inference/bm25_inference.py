@@ -88,34 +88,43 @@ def calculate_recall(data_points, results):
 if __name__ == "__main__":
     input_folder = "input/inference_input/russian/unique_query_test"
     
-    # languages = ["english","french", "italian", "romanian", "russian", "turkish", "ukrainian"]
-    languages = ["english"]
-    for language in tqdm(languages):
-        input_folder = f"input/inference_input/{language}/test"
-        data = load_all_input_from_dir(input_folder, language)
-        results = []
+    languages = ["english","french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+    # languages = ["english"]
+    files = ["test","unique_query"]
+    for file in files:
+        for language in tqdm(languages):
+            input_folder = f"input/train_infer/{language}/new_split/{file}"
+            data = load_all_input_from_dir(input_folder, language)
+            results = []
 
-        for datapoint in tqdm(data):
-            similarities, golden_keys = bm25_similarity(datapoint)
+            for datapoint in tqdm(data):
+                similarities, golden_keys = bm25_similarity(datapoint)
+                
+                ranked_paragraph_numbers = [paragraph_number for paragraph_number, _, _ in similarities]
+                
+                results.append({
+                    "ranked_paragraphs": similarities, 
+                    "golden_keys": golden_keys
+                })
+                
+                # print("Paragraph Numbers - ", ranked_paragraph_numbers)
+                # print("Golden Keys  - ", golden_keys)
             
-            ranked_paragraph_numbers = [paragraph_number for paragraph_number, _, _ in similarities]
+            recall_scores = calculate_recall(data, results)
+            print(f"Recall: {recall_scores}")
             
-            results.append({
-                "ranked_paragraphs": similarities, 
-                "golden_keys": golden_keys
-            })
-            
-            # print("Paragraph Numbers - ", ranked_paragraph_numbers)
-            # print("Golden Keys  - ", golden_keys)
-        
-        recall_scores = calculate_recall(data, results)
-        print(f"Recall: {recall_scores}")
-        
-        recall_data = {}
-        with open(os.path.join('output/inference_outputs/test_datapoints',f'recall_bm25_test.json'), 'r') as json_file:
-            recall_data = json.load(json_file)
+            recall_data = {
+                "model": "bm25"
+            }
+            recall_path = os.path.join('output/inference_outputs/new_splits',f'recall_bm25_{file}.json')
+            if os.path.exists(recall_path):
+                with open(recall_path, 'r') as json_file:
+                    recall_data = json.load(json_file)
+                    
+            # with open(recall_path, 'r') as json_file:
+            #     recall_data = json.load(json_file)
 
-        recall_data[language] = recall_scores
-        with open(os.path.join('output/inference_outputs/test_datapoints',f'recall_bm25_test.json'), 'w+') as json_file:
-            json.dump(recall_data, json_file, indent=4, ensure_ascii=False)
-        print(recall_scores)
+            recall_data[language] = recall_scores
+            with open(recall_path, 'w+') as json_file:
+                json.dump(recall_data, json_file, indent=4, ensure_ascii=False)
+            print(recall_scores)

@@ -15,7 +15,7 @@ from src.models.vector_db.inference.faiss_vector_db import FaissVectorDB
 class Inference:
     def __init__(
             self, 
-            inference_folder: Optional[Text] = 'input/inference_input/english/test', 
+            inference_folder: Optional[Text] = 'input/train_infer/english/new_split/test', 
             inference_datapoints: Optional[List[Dict[str, Any]]] = None, 
             bulk_inference: bool = False,
             use_translations: bool = False,
@@ -29,21 +29,25 @@ class Inference:
             tokenizer: Optional[str] = None,
             model: Optional[str] = None,
             device_: Optional[str] = None,
+            roberta: bool = False
         ):
+        # os.makedirs('output/inference_outputs/new_splits/language_trained/romanian', exist_ok=True)
         self.input_loader = InputLoader()
         self.file_base_name = language
         self.use_translations = use_translations
+        self.run_val = run_val
         self.recall_file_name = f"recall_{question_model_name_or_path.replace('/', '_')}_{'translated' if use_translations else 'not_translated'}_{inference_folder.split('/')[-1]}.json" # type: ignore
         self.language = language
         self.save_recall = save_recall
         if bulk_inference:
             inference_datapoints = self._load_all_input_from_dir(inference_folder)
-            self.file_base_name = inference_folder.split("/")[-2] # type: ignore
+            self.file_base_name = inference_folder.split("/")[-3] # type: ignore
         self._format_input(inference_datapoints)
+        self.folder_name = inference_folder.split('/')[-1] # type: ignore
         if run_val:
             self.encoder = ValEncoder(question_model=model, ctx_model=model, question_tokenizer=tokenizer, ctx_tokenizer=tokenizer, device=device_)
         else:
-            self.encoder = Encoder(device=device, question_model_name_or_path=question_model_name_or_path, ctx_model_name_or_path=ctx_model_name_or_path, use_dpr=dpr)
+            self.encoder = Encoder(device=device, question_model_name_or_path=question_model_name_or_path, ctx_model_name_or_path=ctx_model_name_or_path, use_dpr=dpr, use_roberta=roberta)
         self.faiss = FaissVectorDB(
             # device=device
             )
@@ -63,9 +67,11 @@ class Inference:
         for file in files:
             individual_datapoints = self.input_loader.load_data(data_file=file)
             total_inference_datapoints.extend(individual_datapoints) # type: ignore
-        return total_inference_datapoints[:int(len(total_inference_datapoints)/2)]
-        
-    
+        if self.run_val:
+            return total_inference_datapoints[:int(len(total_inference_datapoints)/2)]
+        return total_inference_datapoints
+
+
     def _format_input(self, inference_datapoints):
         self.data_points = []
         
@@ -96,6 +102,7 @@ class Inference:
             )
         print(self.data_points[0]["query"])
         print(inference_datapoints[0]["query"])
+        
     def _encode_all_paragraphs(self, batch_size=512):
         index_counter = 0
         paragraph_set = set()
@@ -156,7 +163,7 @@ class Inference:
 
 
     def main(self):
-        self._encode_all_paragraphs()
+        self._encode_all_paragraphs(batch_size=256)
         results = []
         
         for idx, points in enumerate(self.data_points):
@@ -183,7 +190,9 @@ class Inference:
         recall_data = {}
         # recall_path = os.path.join('output/inference_outputs/test_datapoints',self.recall_file_name)
         if self.save_recall:
-            recall_path = os.path.join('output/inference_outputs/trained_all',self.recall_file_name)
+            recall_path = os.path.join('output/inference_outputs/new_splits/legal_berts',self.folder_name,self.recall_file_name)
+            recall_dir = os.path.dirname(recall_path)
+            os.makedirs(recall_dir, exist_ok=True)
             if os.path.exists(recall_path):
                 with open(recall_path, 'r') as json_file:
                     recall_data = json.load(json_file)
@@ -202,10 +211,10 @@ if __name__ == "__main__":
     # translations  = [True, False]
     # file = "val"
     # models = [
-    #     # ['bert-base-multilingual-cased', 'bert-base-multilingual-cased'],
+    #     ['bert-base-multilingual-cased', 'bert-base-multilingual-cased'],
     #     ['castorini/mdpr-tied-pft-msmarco', 'castorini/mdpr-tied-pft-msmarco'],
     #     ['castorini/mdpr-tied-pft-msmarco-ft-all', 'castorini/mdpr-tied-pft-msmarco-ft-all'],
-    #     # ['bert-base-uncased', 'bert-base-uncased']
+    #     ['bert-base-uncased', 'bert-base-uncased']
     # ]
 
     
@@ -215,10 +224,14 @@ if __name__ == "__main__":
          
     #      "facebook/dpr-ctx_encoder-single-nq-base"]
     # ]
-    files = ['unique_query_test', 'test']
+    
+    files = ['unique_query', 'test']
+    # files = ['test']
     models = [
-        ["model_output/2024-10-17_single_all_training/_final_model",
-         "model_output/2024-10-17_single_all_training/_final_model"]
+        
+        ["joelniklaus/legal-xlm-roberta-base",
+         "joelniklaus/legal-xlm-roberta-base"],
+
     ]
     
     for file in files:
@@ -230,12 +243,12 @@ if __name__ == "__main__":
             for use_translations in translations:
                 languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
                 # languages = ["french", "italian", "romanian", "russian", "turkish", "ukrainian"]
-                # languages = ["english"]
+                # languages = ["russian"]
                 for language in tqdm(languages, desc="Processing Languages"):
                     print(f"Processing language: {language}")
                     print(f"translations : {use_translations}")
                     
-                    inference_folder = f"input/inference_input/{language}/{file}"
+                    inference_folder = f"input/train_infer/{language}/new_split/{file}"
                     bulk_inference = True
                     # use_translations = False
                     inference = Inference(
@@ -246,7 +259,8 @@ if __name__ == "__main__":
                         language=language,
                         question_model_name_or_path = model[0],
                         ctx_model_name_or_path = model[1],
-                        dpr = False
+                        dpr = False,
+                        roberta = True
                     )
                     inference.main()
                     
