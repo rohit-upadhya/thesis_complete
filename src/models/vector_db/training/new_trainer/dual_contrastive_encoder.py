@@ -1,23 +1,28 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import BertModel, DPRQuestionEncoder, DPRContextEncoder
+from transformers import BertModel, DPRQuestionEncoder, DPRContextEncoder, RobertaModel
 
 class DualContrastiveModel(nn.Module):
     def __init__(self, 
                  query_model_name_or_path='facebook/dpr-question_encoder-single-nq-base',
                  ctx_model_name_or_path='facebook/dpr-ctx_encoder-single-nq-base',
                  use_dpr=True, 
+                 use_roberta=False,
                  device='cpu'):
         super(DualContrastiveModel, self).__init__()
         
         self.device = torch.device(device)
         self.use_dpr = use_dpr
+        self.use_roberta = use_roberta
 
         # Load the appropriate models based on whether DPR is used or not
         if self.use_dpr:
             self.query_encoder = DPRQuestionEncoder.from_pretrained(query_model_name_or_path).to(self.device)
             self.context_encoder = DPRContextEncoder.from_pretrained(ctx_model_name_or_path).to(self.device)
+        elif self.use_roberta:
+            self.query_encoder = RobertaModel.from_pretrained(query_model_name_or_path).to(self.device)
+            self.context_encoder = RobertaModel.from_pretrained(ctx_model_name_or_path).to(self.device)
         else:
             self.query_encoder = BertModel.from_pretrained(query_model_name_or_path).to(self.device)
             self.context_encoder = BertModel.from_pretrained(ctx_model_name_or_path).to(self.device)

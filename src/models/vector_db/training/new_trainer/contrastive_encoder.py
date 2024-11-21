@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import BertModel
+from transformers import BertModel, RobertaModel
 
 class ContrastiveModel(nn.Module):
-    def __init__(self, model_name_or_path):
+    def __init__(self, model_name_or_path, use_roberta):
         print("inside_single model")
         super(ContrastiveModel, self).__init__()
-        self.encoder = BertModel.from_pretrained(model_name_or_path)
+        self.encoder = RobertaModel.from_pretrained(model_name_or_path) if use_roberta else BertModel.from_pretrained(model_name_or_path)
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, query_inputs, pos_inputs, neg_inputs):

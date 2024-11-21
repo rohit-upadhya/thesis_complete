@@ -1,8 +1,7 @@
 import torch
 import logging
 from dataclasses import dataclass
-from transformers import BertTokenizer, BertTokenizer
-from transformers import DPRQuestionEncoderTokenizer, DPRContextEncoderTokenizer
+from transformers import BertTokenizer, BertTokenizer, DPRQuestionEncoderTokenizer, DPRContextEncoderTokenizer, PreTrainedTokenizerFast
 import torch.optim as optim
 from typing import Text, Optional
 from tqdm import tqdm
@@ -24,6 +23,7 @@ from src.models.single_datapoints.common.utils import current_date
 @dataclass
 class ContrastiveTrainer:
     use_dpr: bool = False
+    use_roberta: bool = False
     train_data_folder: Optional[Text] = None
     val_data_folder: Optional[Text] = None
     config_file: Optional[Text] = None
@@ -53,7 +53,7 @@ class ContrastiveTrainer:
         self.encoding_type = "dual" if self.dual_encoders else "single" 
         self.recall_save = self.query_model_name_or_path.replace('/','_')
         self.save_model_name = self.query_model_name_or_path.replace('/','_')
-        log_file_name = os.path.join("output/model_logs",f"training_{self.language}_{self.encoding_type}_{self.recall_save}_{current_date()}.log")
+        log_file_name = os.path.join("output/model_logs",f"training_{self.language}_{self.encoding_type}_{self.recall_save}_{self.current_date}.log")
         self.setup_logging(log_file_name)
         print("Post Init completed.")
     
@@ -79,7 +79,6 @@ class ContrastiveTrainer:
             total_datapoints.extend(individual_datapoints) # type: ignore
         
         
-        print(total_datapoints[0]["query"])
         if self.use_translations:
             languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
             whole_translations = []
@@ -95,7 +94,6 @@ class ContrastiveTrainer:
                             
                             break
                 point["query"] = final_query
-        print(total_datapoints[0]["query"])
         return total_datapoints
     
     def _load_data(self, data_file, num_negatives=7):
@@ -106,19 +104,12 @@ class ContrastiveTrainer:
             combined_query = ', '.join(item['query'])
             positive_indices = set(item['paragraph_numbers'])
             all_paragraphs = item['all_paragraphs']
-            # print(item['query'])
-            # print("Positive",positive_indices)
-            # print(len(all_paragraphs))
-            # print(item["link"])
-            # print(item["file"])
             # positive_paragraphs = []
             # counts = 0
             # for i in positive_indices:
             #     if len(all_paragraphs) > (i - 1):
             #         positive_paragraphs.append(all_paragraphs[i - 1])
             #     else:
-            #         print(item["link"])
-            #         print(item["file"])
             #         counts += 1
             try:
                 positive_paragraphs = [all_paragraphs[i - 1] for i in positive_indices]
@@ -167,10 +158,15 @@ class ContrastiveTrainer:
     def _load_tokenizer(self, query_model_name_or_path, ctx_model_name_or_path):
         print(query_model_name_or_path, ctx_model_name_or_path)
         if self.use_dpr:
-                query = DPRQuestionEncoderTokenizer.from_pretrained(query_model_name_or_path, use_fast=False)
-                print("query loaded")
-                ctx = DPRContextEncoderTokenizer.from_pretrained(ctx_model_name_or_path, use_fast=False)
-                print("ctx loaded")
+            query = DPRQuestionEncoderTokenizer.from_pretrained(query_model_name_or_path, use_fast=False)
+            print("query loaded")
+            ctx = DPRContextEncoderTokenizer.from_pretrained(ctx_model_name_or_path, use_fast=False)
+            print("ctx loaded")
+        elif self.use_roberta:
+            query = PreTrainedTokenizerFast.from_pretrained(query_model_name_or_path, use_fast=True)
+            print("query loaded")
+            ctx = PreTrainedTokenizerFast.from_pretrained(ctx_model_name_or_path,  use_fast=True)
+            print("ctx loaded")
         else :
             query = BertTokenizer.from_pretrained(query_model_name_or_path)
             print("query loaded")
@@ -310,16 +306,19 @@ class ContrastiveTrainer:
         )
         print("before model")
         if self.dual_encoders:
-            model = model = DualEncoder(
+            model = DualEncoder(
                 query_model_name_or_path=self.query_model_name_or_path,
                 ctx_model_name_or_path=self.ctx_model_name_or_path,
                 use_dpr=self.use_dpr,
+                use_roberta=self.use_roberta,
                 device=self.device_str
             ).to(self.device)
         else:
             print("before sigle")
-            model = SingleEncoder(self.query_model_name_or_path).to(self.device)
-        print(model)
+            model = SingleEncoder(
+                model_name_or_path=self.query_model_name_or_path, 
+                use_roberta=self.use_roberta
+            ).to(self.device)
         self.logger.info(f"model : \n  {model}")
         print(f"model : \n  {model}")
         optimizer = optim.AdamW(model.parameters(), lr=self.lr)
@@ -384,8 +383,12 @@ class ContrastiveTrainer:
                     json.dump(recall_data, file, ensure_ascii=False, indent=4)
                 
             if self.save_checkpoints:
-                epoch_save_dir = "/srv/upadro/models/language/{mode}/turkish_{date_of_training}__{mode}__{language}__{translated}__{model_name}_training/checkpoint/epoch_{epoch}".format(
-                    date_of_training=current_date(),
+                file_language = "language"
+                if 'all' in self.language:
+                    file_language = "all"
+                epoch_save_dir = "/srv/upadro/models/{file_language}/{mode}/{date_of_training}__{mode}__{language}__{translated}__{model_name}_training/checkpoint/epoch_{epoch}".format(
+                    file_language=file_language,
+                    date_of_training=self.current_date,
                     mode=self.encoding_type,
                     language=self.language,
                     epoch=epoch+1,
@@ -404,9 +407,12 @@ class ContrastiveTrainer:
         #     mode=self.encoding_type,
         #     language=self.language
         # )
-        
-        model_save_dir = "/srv/upadro/models/language/{mode}/turkish_{date_of_training}__{mode}__{language}__{translated}__{model_name}_training/_final_model".format(
-            date_of_training=current_date(),
+        file_language = "language"
+        if 'all' in self.language:
+            file_language = "all"
+        model_save_dir = "/srv/upadro/models/{file_language}/{mode}/{date_of_training}__{mode}__{language}__{translated}__{model_name}_training/_final_model".format(
+            file_language=file_language,
+            date_of_training=self.current_date,
             mode=self.encoding_type,
             language=self.language,
             translated="translated" if self.use_translations else "not_translated",
@@ -454,14 +460,13 @@ class ContrastiveTrainer:
     #     self.logger.info(f"Model and tokenizer saved to {model_save_dir}")
 
 if __name__ == "__main__":
-    # languages = ["russian", "english", "french", "italian", "romanian", "turkish", "ukrainian"]
-    languages = ["turkish"]
+    languages = ["russian", "all", "english", "french", "italian", "romanian", "turkish", "ukrainian"]
+    # languages = ["turkish"]
     for language in languages:
-        # dual_encoders = [False, True]
-        dual_encoders = [False]
+        dual_encoders = [False, True]
+        # dual_encoders = [False]
         models = [
-            ['bert-base-multilingual-cased', 'bert-base-multilingual-cased'],
-            ['castorini/mdpr-tied-pft-msmarco', 'castorini/mdpr-tied-pft-msmarco'],
+            ["joelniklaus/legal-xlm-roberta-base", "joelniklaus/legal-xlm-roberta-base"]
             # ['castorini/mdpr-tied-pft-msmarco-ft-all', 'castorini/mdpr-tied-pft-msmarco-ft-all'],
             # ["facebook/dpr-question_encoder-single-nq-base", "facebook/dpr-ctx_encoder-single-nq-base"]
             # ['bert-base-uncased', 'bert-base-uncased']
@@ -474,39 +479,40 @@ if __name__ == "__main__":
         # val_data_folder = 'input/test_val/new_split'
         for dual_encoder in dual_encoders:
             for model in models:
-                try:
-                    if model[0] != 'bert-base-uncased':
-                        # translations = [True, False]
-                        translations = [False]
+                # try:
+                    if model[0] != 'bert-base-uncased' and "all" in language:
+                        translations = [True, False]
+                        # translations = [False]
                     else:
-                        translations = [False]
+                        translations = [True]
                     for use_translation in translations:
-                        try:
+                        # try:
                             config_file = "src/models/vector_db/commons/config.yaml"
                             language = train_data_folder.split('/')[-3] 
                             trainer = ContrastiveTrainer(
                                 use_dpr=False,
+                                use_roberta=True,
                                 train_data_folder=train_data_folder,
                                 val_data_folder=val_data_folder,
                                 config_file=config_file,
-                                device_str='cuda:1',
+                                device_str='cuda:2',
                                 dual_encoders=dual_encoder,
                                 language=language,
-                                batch_size=12,
-                                epochs=8,
-                                lr=5e-6,
+                                batch_size=6,
+                                epochs=5,
+                                lr=1e-5,
                                 save_checkpoints=True,
                                 step_validation=False,
                                 query_model_name_or_path=model[0],
                                 ctx_model_name_or_path=model[1],
                                 # model_name_or_path='bert-base-multilingual-cased',
-                                use_translations=False,
+                                use_translations=use_translation,
                             )
                             trainer.train()
-                        except Exception as e:
-                            with open("output/model_logs/error.txt", "a+") as file:
-                                file.write(f"error occured in encoder : {'dual' if dual_encoder else 'single'} and {model} and {'trasnlation' if use_translation else 'no translation'} \n")
-                except Exception as e:
-                    with open("output/model_logs/error.txt", "a+") as file:
-                        file.write(f"error occured in encoder : {'dual' if dual_encoder else 'single'} and {model}\n")
+                #         except Exception as e:
+                #             with open("output/model_logs/error.txt", "a+") as file:
+                #                 file.write(f"error occured in encoder : {'dual' if dual_encoder else 'single'} and {model} and {'trasnlation' if use_translation else 'no translation'} \n")
+                # except Exception as e:
+                #     with open("output/model_logs/error.txt", "a+") as file:
+                #         file.write(f"error occured in encoder : {'dual' if dual_encoder else 'single'} and {model}\n")
         print("done")
