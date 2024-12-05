@@ -10,7 +10,7 @@ BASE_PATH = "/home/upadro/code/thesis/output/dataset_outputs"
 RESULTS_PATH = "/home/upadro/code/thesis/output/visualizations"
 ANALYTICS_PATH = "/home/upadro/code/thesis/data_analysis/specifics"
 COUNTS_PATH = "/home/upadro/code/thesis/data_analysis/counts"
-LANGUAGES = ["italian", "romanian", "russian", "turkish", "ukrainian", "french", "english"]
+LANGUAGES = ["all","italian", "romanian", "russian", "turkish", "ukrainian", "french", "english"]
 UNSEEN_QUERIES_TRAIN_ANALYTICS_PATH = "/srv/upadro/data_analysis/unseen_queries/train/specifics" 
 UNSEEN_QUERIES_TRAIN_COUNTS_PATH = "/srv/upadro/data_analysis/unseen_queries/train/counts"
 UNSEEN_QUERIES_TEST_ANALYTICS_PATH = "/srv/upadro/data_analysis/unseen_queries/test/specifics" 
@@ -19,7 +19,7 @@ UNSEEN_QUERIES_VAL_ANALYTICS_PATH = "/srv/upadro/data_analysis/unseen_queries/va
 UNSEEN_QUERIES_VAL_COUNTS_PATH = "/srv/upadro/data_analysis/unseen_queries/val/counts"
 UNSEEN_QUERIES_UNIQUE_QUERY_ANALYTICS_PATH = "/srv/upadro/data_analysis/unseen_queries/unique_query_test/specifics" 
 UNSEEN_QUERIES_UNIQUE_QUERY_COUNTS_PATH = "/srv/upadro/data_analysis/unseen_queries/unique_query_test/counts"
-DEFAULT_LANGUAGE = "english"
+DEFAULT_LANGUAGE = "all"
 
 def save_computation(data, is_satisfactory, language):
     data['is_satisfactory'] = is_satisfactory
@@ -66,9 +66,11 @@ def load_json_data(filepath):
         return None
 
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Main", "Train-Test(Unseen Queries)"], index=1)
+page = st.sidebar.radio("Go to", ["Main", "Train-Test(Unseen Queries)"], index=0)
 
 if page == "Main":
+    if "active_tab" not in st.session_state:
+        st.session_state.active_tab = "Analytics"
     tab1, tab2, tab3 = st.tabs(["JSON Checker", "Results Calculation", "Analytics"])
 
     with tab1:
@@ -144,7 +146,7 @@ if page == "Main":
         st.title("Analytics")
         st.write("_Tokens here refer to individual words (separated by spaces)._")
         language = st.selectbox("Select language", LANGUAGES, index=LANGUAGES.index(DEFAULT_LANGUAGE), key="language_analytics")
-
+        threshold = 1000
         if language:
             filename = f"{language}.json"
             filepath = os.path.join(ANALYTICS_PATH, filename)
@@ -171,7 +173,11 @@ if page == "Main":
                                 case_link = meta_data.get('case_link')
                                 
                                 if case_link not in unique_cases:
-                                    total_paragraphs_tokens.extend(meta_data.get('total_paragraphs_tokens', []))
+                                    threshold = 1000
+                                    tokens = meta_data.get('total_paragraphs_tokens', [])
+                                    grouped_tokens = [token if token <= threshold else threshold for token in tokens]
+                                    
+                                    total_paragraphs_tokens.extend(grouped_tokens)
                                     unique_cases.add(case_link)
                     mean_percentage = np.mean(percentages)
                     median_percentage = np.median(percentages)
@@ -193,10 +199,11 @@ if page == "Main":
                     ax1.axvline(median_percentage, color='orange', linestyle='--', label='Median')
                     ax1.set_xlim(-2, max(percentage_counts.keys()) + 5)
                     ax1.set_ylim(0, max(percentage_counts.values()) + 5)
-                    ax1.set_title('% of relevant paragraphs per judgement')
-                    ax1.set_xlabel('Percentage')
-                    ax1.set_ylabel('Frequency')
-                    ax1.legend()
+                    ax1.set_title('% of relevant paragraphs per judgement', fontsize=18)
+                    ax1.set_xlabel('Percentage', fontsize=16)
+                    ax1.set_ylabel('Frequency', fontsize=16)
+                    ax1.tick_params(axis='both', which='major', labelsize=14)
+                    ax1.legend(fontsize=12)
                     st.pyplot(fig1)
 
                     fig2, ax2 = plt.subplots(figsize=(8, 6))
@@ -205,10 +212,11 @@ if page == "Main":
                     ax2.axvline(median_tokens, color='orange', linestyle='--', label='Median')
                     ax2.set_xlim(-2, max(query_tokens_counts.keys()) + 2)
                     ax2.set_ylim(0, max(query_tokens_counts.values()) + 10)
-                    ax2.set_title('Number of tokens per query')
-                    ax2.set_xlabel('Query Tokens')
-                    ax2.set_ylabel('Frequency')
-                    ax2.legend()
+                    ax2.set_title('Number of tokens per query', fontsize=18)
+                    ax2.set_xlabel('Query Tokens', fontsize=16)
+                    ax2.set_ylabel('Frequency', fontsize=16)
+                    ax2.tick_params(axis='both', which='major', labelsize=14)
+                    ax2.legend(fontsize=12)
                     st.pyplot(fig2)
 
                     fig3, ax3 = plt.subplots(figsize=(8, 6))
@@ -217,23 +225,37 @@ if page == "Main":
                     ax3.axvline(median_relevant_tokens, color='orange', linestyle='--', label='Median')
                     ax3.set_xlim(-200, max(relevant_tokens_counts.keys()) + 20)
                     ax3.set_ylim(0, max(relevant_tokens_counts.values()) + 5)
-                    ax3.set_title('Relevant Paragraph Tokens Distribution')
-                    ax3.set_xlabel('Relevant Paragraph Tokens')
-                    ax3.set_ylabel('Frequency')
-                    ax3.legend()
+                    ax3.set_title('Relevant Paragraph Tokens Distribution', fontsize=18)
+                    ax3.set_xlabel('Relevant Paragraph Tokens', fontsize=16)
+                    ax3.set_ylabel('Frequency', fontsize=16)
+                    ax3.tick_params(axis='both', which='major', labelsize=14)
+                    ax3.legend(fontsize=12)
                     st.pyplot(fig3)
 
+                    # Plot the histogram
                     fig4, ax4 = plt.subplots(figsize=(8, 6))
                     ax4.bar(total_tokens_counts.keys(), total_tokens_counts.values(), color='lightgreen', width=10)
                     ax4.axvline(mean_total_tokens, color='black', linestyle='--', label='Mean')
                     ax4.axvline(median_total_tokens, color='orange', linestyle='--', label='Median')
-                    ax4.set_xlim(-200, max(total_tokens_counts.keys()) + 20)
+
+                    # Set axis limits
+                    ax4.set_xlim(-50, 1050)  # Adjusted to give some padding
                     ax4.set_ylim(0, max(total_tokens_counts.values()) + 1000)
-                    ax4.set_title('Total Paragraph Tokens Distribution (Log Scale on Y-Axis)')
-                    ax4.set_xlabel('Total Paragraph Tokens')
-                    ax4.set_ylabel('Frequency')
-                    ax4.legend()
+
+                    # Set custom x-ticks and labels
+                    ax4.set_xticks([0, 200, 400, 600, 800, 1000])
+                    ax4.set_xticklabels(['0', '200', '400', '600', '800', '>1000'], fontsize=12)
+
+                    # Update title and labels
+                    ax4.set_title('Total Paragraph Tokens Distribution (Grouped Above 1000)', fontsize=18)
+                    ax4.set_xlabel('Total Paragraph Tokens', fontsize=16)
+                    ax4.set_ylabel('Frequency', fontsize=16)
+                    ax4.tick_params(axis='both', which='major', labelsize=14)
+                    ax4.legend(fontsize=12)
+
+                    # Show the plot
                     st.pyplot(fig4)
+
 
                     mean_total_paragraphs = np.mean(total_paragraphs)
                     median_total_paragraphs = np.median(total_paragraphs)
@@ -246,10 +268,11 @@ if page == "Main":
                     ax6.axvline(median_total_paragraphs, color='orange', linestyle='--', label='Median')
                     ax6.set_xlim(0, max(total_paragraphs_counts.keys()) + 20)
                     ax6.set_ylim(0, max(total_paragraphs_counts.values()) + 5)
-                    ax6.set_title('Total Paragraphs Distribution per Case')
-                    ax6.set_xlabel('Number of Total Paragraphs')
-                    ax6.set_ylabel('Frequency')
-                    ax6.legend()
+                    ax6.set_title('Total Paragraphs Distribution per Case', fontsize=18)
+                    ax6.set_xlabel('Number of Total Paragraphs', fontsize=16)
+                    ax6.set_ylabel('Frequency', fontsize=16)
+                    ax6.tick_params(axis='both', which='major', labelsize=14)
+                    ax6.legend(fontsize=12)
                     st.pyplot(fig6)
                     
                 else:

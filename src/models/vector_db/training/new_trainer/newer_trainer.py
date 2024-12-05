@@ -357,7 +357,6 @@ class ContrastiveTrainer:
                     # print(f"Logits for batch {batch_idx+1}: {logits}")
 
                     labels = torch.zeros(logits.size(0), dtype=torch.long).to(self.device)
-
                     loss = criterion(logits, labels)
                     total_loss += loss.item()
 
@@ -382,7 +381,7 @@ class ContrastiveTrainer:
                 with open(recall_path, "w+") as file:
                     json.dump(recall_data, file, ensure_ascii=False, indent=4)
                 
-            if self.save_checkpoints:
+            if self.save_checkpoints and (epoch+1) >= 3:
                 file_language = "language"
                 if 'all' in self.language:
                     file_language = "all"
@@ -461,7 +460,7 @@ class ContrastiveTrainer:
 
 if __name__ == "__main__":
     languages = ["russian", "all", "english", "french", "italian", "romanian", "turkish", "ukrainian"]
-    # languages = ["turkish"]
+    
     for language in languages:
         dual_encoders = [False, True]
         # dual_encoders = [False]
@@ -485,6 +484,7 @@ if __name__ == "__main__":
                         # translations = [False]
                     else:
                         translations = [True]
+                        # translations = [False]
                     for use_translation in translations:
                         # try:
                             config_file = "src/models/vector_db/commons/config.yaml"
@@ -495,12 +495,12 @@ if __name__ == "__main__":
                                 train_data_folder=train_data_folder,
                                 val_data_folder=val_data_folder,
                                 config_file=config_file,
-                                device_str='cuda:2',
+                                device_str='cuda:3',
                                 dual_encoders=dual_encoder,
                                 language=language,
                                 batch_size=6,
                                 epochs=5,
-                                lr=1e-5,
+                                lr=1e-6,
                                 save_checkpoints=True,
                                 step_validation=False,
                                 query_model_name_or_path=model[0],

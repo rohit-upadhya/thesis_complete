@@ -54,7 +54,7 @@ class Inference:
         self.all_paragraph_encodings = []
         self.all_unique_keys = []
         self.query_paragraph_mapping = {}
-        
+        self.model_trained_language = question_model_name_or_path.split("__")[2] if "training" in question_model_name_or_path else "base"
     
     
     def _load_all_input_from_dir(self, input_data_path):
@@ -69,7 +69,7 @@ class Inference:
             total_inference_datapoints.extend(individual_datapoints) # type: ignore
         print("self.run_val", self.run_val)
         if self.run_val:
-            return total_inference_datapoints[:int(len(total_inference_datapoints)/2)]
+            return total_inference_datapoints
         return total_inference_datapoints
 
 
@@ -191,7 +191,7 @@ class Inference:
         recall_data = {}
         # recall_path = os.path.join('output/inference_outputs/test_datapoints',self.recall_file_name)
         if self.save_recall:
-            recall_path = os.path.join('output/inference_outputs/new_splits/legal_berts/trained/turkish',self.folder_name,self.recall_file_name)
+            recall_path = os.path.join('output/inference_outputs/new_splits/legal_berts/trained/language', self.model_trained_language, self.folder_name, self.recall_file_name)
             recall_dir = os.path.dirname(recall_path)
             os.makedirs(recall_dir, exist_ok=True)
             if os.path.exists(recall_path):
@@ -230,19 +230,8 @@ if __name__ == "__main__":
     # files = ['test']
     models = [
         
-        ["/srv/upadro/models/all/single/2024-11-17__single__all__translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_1",
-         "/srv/upadro/models/all/single/2024-11-17__single__all__translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_1"],
-        
-        ["/srv/upadro/models/all/single/2024-11-17__single__all__translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_2",
-         "/srv/upadro/models/all/single/2024-11-17__single__all__translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_2"],
-        
-        ["/srv/upadro/models/all/single/2024-11-17__single__all__translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_3",
-         "/srv/upadro/models/all/single/2024-11-17__single__all__translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_3"],
-        
-        ["/srv/upadro/models/all/single/2024-11-17__single__all__translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_4",
-         "/srv/upadro/models/all/single/2024-11-17__single__all__translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_4"],
-        
-
+        ["/srv/upadro/models/language/dual/2024-11-27__dual__turkish__not_translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_4/query_model",
+         "/srv/upadro/models/language/dual/2024-11-27__dual__turkish__not_translated__joelniklaus_legal-xlm-roberta-base_training/checkpoint/epoch_4/ctx_model"],
     ]
     
     for file in files:
@@ -266,7 +255,7 @@ if __name__ == "__main__":
                         inference_folder=inference_folder, 
                         bulk_inference=bulk_inference,
                         use_translations=use_translations,
-                        device='cuda:0',
+                        device='cuda:3',
                         language=language,
                         question_model_name_or_path = model[0],
                         ctx_model_name_or_path = model[1],
