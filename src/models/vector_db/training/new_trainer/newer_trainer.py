@@ -1,16 +1,16 @@
-import torch
+import torch # type: ignore
 import logging
 from dataclasses import dataclass
-from transformers import BertTokenizer, BertTokenizer, DPRQuestionEncoderTokenizer, DPRContextEncoderTokenizer, PreTrainedTokenizerFast
-import torch.optim as optim
+from transformers import BertTokenizer, BertTokenizer, DPRQuestionEncoderTokenizer, DPRContextEncoderTokenizer, PreTrainedTokenizerFast # type: ignore
+import torch.optim as optim # type: ignore
 from typing import Text, Optional
-from tqdm import tqdm
-from torch.utils.data import DataLoader
+from tqdm import tqdm # type: ignore
+from torch.utils.data import DataLoader # type: ignore
 import os
 import random
-import numpy as np
-import torch.nn.functional as F
-import torch.nn as nn
+import numpy as np # type: ignore
+import torch.nn.functional as F # type: ignore
+import torch.nn as nn # type: ignore
 import json
 import time 
 
@@ -84,7 +84,7 @@ class ContrastiveTrainer:
             whole_translations = []
             for language in languages:
                 translatons_query = self.input_loader.load_data(data_file=f"output/translation_outputs/query_translations_{language}.json")
-                whole_translations.extend(translatons_query)
+                whole_translations.extend(translatons_query) # type: ignore
             for point in total_datapoints:
                 final_query = []
                 for query_item in point["query"]:
@@ -104,13 +104,6 @@ class ContrastiveTrainer:
             combined_query = ', '.join(item['query'])
             positive_indices = set(item['paragraph_numbers'])
             all_paragraphs = item['all_paragraphs']
-            # positive_paragraphs = []
-            # counts = 0
-            # for i in positive_indices:
-            #     if len(all_paragraphs) > (i - 1):
-            #         positive_paragraphs.append(all_paragraphs[i - 1])
-            #     else:
-            #         counts += 1
             try:
                 positive_paragraphs = [all_paragraphs[i - 1] for i in positive_indices]
             except:
@@ -147,7 +140,7 @@ class ContrastiveTrainer:
                     dpr = False,
                     save_recall = False,
                     model=model.bert,
-                    tokenizer=self.tokenizer,
+                    tokenizer=self.tokenizer, # type: ignore
                     device_=self.device,
                     run_val=True
                 )
@@ -285,9 +278,7 @@ class ContrastiveTrainer:
         train_data_points = self._load_data(self.train_data_folder, num_negatives=self.individual_datapoints)
         print(f"Number of training data points: {len(train_data_points)}")
         if self.dual_encoders:
-            # print(self.query_model_name_or_path, self.ctx_model_name_or_path)
             self.query_tokenizer, self.ctx_tokenizer  = self._load_tokenizer(self.query_model_name_or_path, self.ctx_model_name_or_path)
-            # self.ctx_tokenizer = self._load_tokenizer(self.ctx_model_name_or_path)
         else:
             self.query_tokenizer, self.ctx_tokenizer = self._load_tokenizer(self.query_model_name_or_path, self.query_model_name_or_path)
         tokenized_data = self.data_tokenizer(
@@ -336,7 +327,6 @@ class ContrastiveTrainer:
             
             progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.epochs}", leave=False)
             for batch_idx, batch in enumerate(train_loader):
-                # print(f"Processing batch {batch_idx+1} in epoch {epoch+1}")
                 try:
                     optimizer.zero_grad()
 
@@ -354,7 +344,6 @@ class ContrastiveTrainer:
                     }
 
                     logits = model(query_inputs, pos_inputs, neg_inputs)
-                    # print(f"Logits for batch {batch_idx+1}: {logits}")
 
                     labels = torch.zeros(logits.size(0), dtype=torch.long).to(self.device)
                     loss = criterion(logits, labels)
@@ -394,18 +383,8 @@ class ContrastiveTrainer:
                     translated="translated" if self.use_translations else "not_translated",
                     model_name=f"{self.save_model_name}"
                 )
-                # self.save_model_and_tokenizer(model, self.tokenizer, epoch_save_dir)
                 self.save_model_and_tokenizer(model, self.query_tokenizer, self.ctx_tokenizer, epoch_save_dir, is_checkpoint=True, epoch=epoch+1)
                 
-        # if self.step_validation:
-        #     with open("output/model_logs/val_recall/{date_of_training}_{model}_recall.json".format(date_of_training=current_date(), model=self.recall_save), "w+") as file:
-        #         json.dump(recall_per_epoch, file, ensure_ascii=False, indent=4)
-        
-        # model_save_dir = "model_output/{date_of_training}_{mode}_{language}_training/_final_model".format(
-        #     date_of_training=current_date(),
-        #     mode=self.encoding_type,
-        #     language=self.language
-        # )
         file_language = "language"
         if 'all' in self.language:
             file_language = "all"
@@ -423,26 +402,21 @@ class ContrastiveTrainer:
         print("Training Complete.")
 
     def save_model_and_tokenizer(self, model, query_tokenizer, ctx_tokenizer, model_save_dir, is_checkpoint=False, epoch=None):
-        # Create the main save directory if it doesn't exist
         os.makedirs(model_save_dir, exist_ok=True)
         
         if self.dual_encoders:
-            # Create directories for query and context models
             query_model_dir = os.path.join(model_save_dir, "query_model")
             ctx_model_dir = os.path.join(model_save_dir, "ctx_model")
             
             os.makedirs(query_model_dir, exist_ok=True)
             os.makedirs(ctx_model_dir, exist_ok=True)
             
-            # Save the pre-trained models separately
             model.query_encoder.save_pretrained(query_model_dir)
             model.context_encoder.save_pretrained(ctx_model_dir)
 
-            # Save the respective tokenizers
             query_tokenizer.save_pretrained(query_model_dir)
             ctx_tokenizer.save_pretrained(ctx_model_dir)
         else:
-            # Save the single encoder model and only the query tokenizer
             model.encoder.save_pretrained(model_save_dir)
             query_tokenizer.save_pretrained(model_save_dir)
         
@@ -451,34 +425,21 @@ class ContrastiveTrainer:
         else:
             self.logger.info(f"Final model and tokenizer saved to {model_save_dir}")
 
-
-    # def save_model_and_tokenizer(self, model, tokenizer, model_save_dir):
-    #     os.makedirs(model_save_dir, exist_ok=True)
-    #     model.bert.save_pretrained(model_save_dir)
-    #     tokenizer.save_pretrained(model_save_dir)
-    #     self.logger.info(f"Model and tokenizer saved to {model_save_dir}")
-
 if __name__ == "__main__":
     languages = ["russian", "all", "english", "french", "italian", "romanian", "turkish", "ukrainian"]
     
     for language in languages:
         dual_encoders = [False, True]
-        # dual_encoders = [False]
         models = [
             ["joelniklaus/legal-xlm-roberta-base", "joelniklaus/legal-xlm-roberta-base"]
-            # ['castorini/mdpr-tied-pft-msmarco-ft-all', 'castorini/mdpr-tied-pft-msmarco-ft-all'],
-            # ["facebook/dpr-question_encoder-single-nq-base", "facebook/dpr-ctx_encoder-single-nq-base"]
-            # ['bert-base-uncased', 'bert-base-uncased']
         ]
         train_data_folder = f'input/train_infer/{language}/new_split/train_test_val'
         val_data_folder = f'input/train_infer/{language}/new_split/val'
         
         print(train_data_folder)
-        # train_data_folder = 'input/test_train/new_split'
-        # val_data_folder = 'input/test_val/new_split'
         for dual_encoder in dual_encoders:
             for model in models:
-                # try:
+                try:
                     if model[0] != 'bert-base-uncased' and "all" in language:
                         translations = [True, False]
                         # translations = [False]
@@ -486,7 +447,7 @@ if __name__ == "__main__":
                         translations = [True]
                         # translations = [False]
                     for use_translation in translations:
-                        # try:
+                        try:
                             config_file = "src/models/vector_db/commons/config.yaml"
                             language = train_data_folder.split('/')[-3] 
                             trainer = ContrastiveTrainer(
@@ -509,10 +470,10 @@ if __name__ == "__main__":
                                 use_translations=use_translation,
                             )
                             trainer.train()
-                #         except Exception as e:
-                #             with open("output/model_logs/error.txt", "a+") as file:
-                #                 file.write(f"error occured in encoder : {'dual' if dual_encoder else 'single'} and {model} and {'trasnlation' if use_translation else 'no translation'} \n")
-                # except Exception as e:
-                #     with open("output/model_logs/error.txt", "a+") as file:
-                #         file.write(f"error occured in encoder : {'dual' if dual_encoder else 'single'} and {model}\n")
+                        except Exception as e:
+                            with open("output/model_logs/error.txt", "a+") as file:
+                                file.write(f"error occured in encoder : {'dual' if dual_encoder else 'single'} and {model} and {'trasnlation' if use_translation else 'no translation'} \n")
+                except Exception as e:
+                    with open("output/model_logs/error.txt", "a+") as file:
+                        file.write(f"error occured in encoder : {'dual' if dual_encoder else 'single'} and {model}\n")
         print("done")

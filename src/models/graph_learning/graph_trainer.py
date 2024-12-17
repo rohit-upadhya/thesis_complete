@@ -16,44 +16,84 @@ from src.models.graph_learning.encoders.paragraph_gcn import ParagraphGNN
 from src.models.graph_learning.encoders.graph_encoder import GraphEncoder as Encoder
 torch.autograd.set_detect_anomaly(True)
 
-@dataclass
 class GraphTrainer:
-    use_dpr: bool = False
-    use_roberta: bool = False
-    train_data_folder: Optional[Text] = None
-    val_data_folder: Optional[Text] = None
-    config_file: Optional[Text] = None
-    batch_size: int = 8
-    val_batch_size: int = 8
-    individual_datapoints: int = 7
-    epochs: int = 1
-    device_str: str = 'cpu'
-    dual_encoders: bool = True
-    language: str = 'english'
-    lr: float = 2e-5
-    save_checkpoints: bool = False
-    step_validation: bool = False
-    model_name_or_path: str = "bert-base-multilingual-cased"
-    query_model_name_or_path: str = "bert-base-multilingual-cased"
-    ctx_model_name_or_path: str = "bert-base-multilingual-cased"
-    use_translations: bool = False
-    num_negatives: int  = 7
-    
-    def __post_init__(self):
+    def __init__(
+        self,
+        use_dpr=False,
+        use_roberta=False,
+        train_data_folder=None,
+        val_data_folder=None,
+        config_file=None,
+        batch_size=8,
+        val_batch_size=8,
+        individual_datapoints=7,
+        epochs=1,
+        device_str='cpu',
+        dual_encoders=True,
+        language='english',
+        lr=2e-5,
+        save_checkpoints=False,
+        step_validation=False,
+        model_name_or_path="bert-base-multilingual-cased",
+        query_model_name_or_path="bert-base-multilingual-cased",
+        ctx_model_name_or_path="bert-base-multilingual-cased",
+        use_translations=False,
+        num_negatives=7,
+    ):
+        self.use_dpr = use_dpr
+        self.use_roberta = use_roberta
+        self.train_data_folder = train_data_folder
+        self.val_data_folder = val_data_folder
+        self.config_file = config_file
+        self.batch_size = batch_size
+        self.val_batch_size = val_batch_size
+        self.individual_datapoints = individual_datapoints
+        self.epochs = epochs
+        self.device_str = device_str
+        self.dual_encoders = dual_encoders
+        self.language = language
+        self.lr = lr
+        self.save_checkpoints = save_checkpoints
+        self.step_validation = step_validation
+        self.model_name_or_path = model_name_or_path
+        self.query_model_name_or_path = query_model_name_or_path
+        self.ctx_model_name_or_path = ctx_model_name_or_path
+        self.use_translations = use_translations
+        self.num_negatives = num_negatives
+
+        # Initialize other attributes
         self.current_date = current_date()
         self.input_loader = InputLoader()
+
         if self.config_file == "":
             raise ValueError("config file empty, please contact admin")
-        self.config = self.input_loader.load_config(self.config_file) # type: ignore
+
+        self.config = self.input_loader.load_config(self.config_file)  # type: ignore
         self.config = self.config["dual_encoder"] if self.dual_encoders else self.config["single_encoder"] # type: ignore
-        self.device = torch.device(self.device_str if torch.cuda.is_available() and 'cuda' in self.device_str else 'cpu')
-        self.encoding_type = "dual" if self.dual_encoders else "single" 
-        self.recall_save = self.query_model_name_or_path.replace('/','_')
-        self.save_model_name = self.query_model_name_or_path.replace('/','_')
-        self.encoder = Encoder(device=self.device_str, question_model_name_or_path=self.query_model_name_or_path, ctx_model_name_or_path=self.ctx_model_name_or_path, use_dpr=self.use_dpr, use_roberta=self.use_roberta)
-        log_file_name = os.path.join("output/model_logs",f"training_graph_{self.language}_{self.encoding_type}_{self.recall_save}_{self.current_date}.log")
+
+        self.device = torch.device(
+            self.device_str
+            if torch.cuda.is_available() and 'cuda' in self.device_str
+            else 'cpu'
+        )
+        self.encoding_type = "dual" if self.dual_encoders else "single"
+        self.recall_save = self.query_model_name_or_path.replace('/', '_')
+        self.save_model_name = self.query_model_name_or_path.replace('/', '_')
+
+        self.encoder = Encoder(
+            device=self.device_str,
+            question_model_name_or_path=self.query_model_name_or_path,
+            ctx_model_name_or_path=self.ctx_model_name_or_path,
+            use_dpr=self.use_dpr,
+            use_roberta=self.use_roberta,
+        )
+
+        log_file_name = os.path.join(
+            "output/model_logs",
+            f"training_graph_{self.language}_{self.encoding_type}_{self.recall_save}_{self.current_date}.log",
+        )
         self.setup_logging(log_file_name)
-        print("Post Init completed.")
+        print("Initialization completed.")
     
     def _build_graph(self, paragraph_encodings):
         
@@ -63,8 +103,12 @@ class GraphTrainer:
         for i in range(num_paragraphs):
             if i > 0:
                 edge_index.append([i, i-1])
+            if i > 1:
+                edge_index.append([i, i-2])
             if i < num_paragraphs - 1:
                 edge_index.append([i, i+1])
+            if i < num_paragraphs - 2:
+                edge_index.append([i, i+2])
         
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         node_features = paragraph_encodings.clone().detach().requires_grad_(True)
@@ -400,7 +444,9 @@ if __name__ == "__main__":
             # ['castorini/mdpr-tied-pft-msmarco-ft-all', 'castorini/mdpr-tied-pft-msmarco-ft-all'],
             # ["facebook/dpr-question_encoder-single-nq-base", "facebook/dpr-ctx_encoder-single-nq-base"]
             # ['bert-base-uncased', 'bert-base-uncased']
-            ['bert-base-multilingual-cased', 'bert-base-multilingual-cased']
+            # ['bert-base-multilingual-cased', 'bert-base-multilingual-cased']
+            ["/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+             "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model"]
         ]
         train_data_folder = f'input/train_infer/{language}/new_split/train_test_val'
         val_data_folder = f'input/train_infer/{language}/new_split/val'

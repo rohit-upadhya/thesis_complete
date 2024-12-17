@@ -9,13 +9,10 @@ class ParagraphGNN(nn.Module):
         self.convs = nn.ModuleList([
             GCNConv(hidden_dim, hidden_dim) for _ in range(num_layers)
         ])
-
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        for conv in self.convs:
-            x = conv(x, edge_index)
-            x = F.relu(x) 
-        data.x = x
-        return data
+    
+    def forward(self, points):
+        
+        
+        pass
     
     
