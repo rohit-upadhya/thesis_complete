@@ -16,7 +16,8 @@ from src.models.vector_db.commons.input_loader import InputLoader
 from src.models.vector_db.inference.encoder import Encoder
 from src.models.vector_db.inference.val_encoder import ValEncoder
 from src.models.vector_db.inference.faiss_vector_db import FaissVectorDB
-from src.models.graph_learning.inference.inference_paragraph_gat import ParagraphGAT
+# from src.models.graph_learning.inference.inference_paragraph_gat import ParagraphGAT
+from src.models.graph_learning.inference.new_inference_gat import ParagraphGAT
 
 
 class Inference:
@@ -265,7 +266,7 @@ class Inference:
         gnn_model = self._load_model(model_path=self.graph_model, hidden_dim=768)
         self._encode_all_paragraphs(gnn_model=gnn_model, batch_size=512)
         results = []
-        
+        print(self.graph_model)
         for idx, points in enumerate(self.data_points):
             query_encodings = self._encode_query(points['query'])
             number_of_relevant_paragraph_2 = max(int(math.ceil(points["length_of_all_paragraphs"] * 0.02)), 1)
@@ -290,7 +291,7 @@ class Inference:
         recall_data = {}
         # recall_path = os.path.join('output/inference_outputs/test_datapoints',self.recall_file_name)
         if self.save_recall:
-            recall_path = os.path.join('output/inference_outputs/new_splits/graph/trained/all/', self.model_trained_language, self.folder_name, self.recall_file_name)
+            recall_path = os.path.join('output/inference_outputs/new_splits/graph/trained/', self.model_trained_language, self.folder_name, self.recall_file_name)
             recall_dir = os.path.dirname(recall_path)
             os.makedirs(recall_dir, exist_ok=True)
             if os.path.exists(recall_path):
@@ -334,6 +335,8 @@ if __name__ == "__main__":
         
         ["/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
              "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model"],
+        
+        # ["castorini/mdpr-tied-pft-msmarco", "castorini/mdpr-tied-pft-msmarco"]
     ]
     
     for file in files:
@@ -358,11 +361,11 @@ if __name__ == "__main__":
                         inference_folder=inference_folder, 
                         bulk_inference=bulk_inference,
                         use_translations=use_translations,
-                        device='cuda:2',
+                        device='cuda:3',
                         language=language,
                         question_model_name_or_path = model[0],
                         ctx_model_name_or_path = model[1],
-                        graph_model = '/srv/upadro/models/graph/2024-12-16___all_gat_bm_25_training/checkpoints/epoch_50/graph_model.pt'
+                        graph_model = '/srv/upadro/models/graph/2024-12-18___all_gat_trained_mdpr_with_cosine_training/checkpoints/epoch_5/graph_model.pt'
                     )
                     inference.main()
                     

@@ -14,6 +14,7 @@ import gc
 from rank_bm25 import BM25Okapi # type: ignore
 from joblib import Parallel, delayed # type: ignore
 import heapq
+from sklearn.metrics.pairwise import cosine_similarity
 
 from src.models.single_datapoints.common.utils import current_date
 from src.models.single_datapoints.common.data_loader import InputLoader
@@ -50,6 +51,7 @@ class GraphTrainer:
         comments = "",
         use_bm25 = False,
         use_all=False,
+        use_cosine = False
     ):
         self.use_dpr = use_dpr
         self.use_roberta = use_roberta
@@ -78,6 +80,7 @@ class GraphTrainer:
         self.comments = comments
         self.use_bm25 = use_bm25
         self.use_all = use_all
+        self.use_cosine = use_cosine
         if self.config_file == "":
             raise ValueError("config file empty, please contact admin")
 
@@ -247,13 +250,65 @@ class GraphTrainer:
         
         return top_5
     
-    def _build_graph(self, paragraph_encodings, paragraphs ):
+    # def _build_graph(self, paragraph_encodings, paragraphs ):
         
+    #     node_features = paragraph_encodings
+    #     num_paragraphs = len(paragraph_encodings)
+
+    #     if self.use_all:
+    #         edge_index = []
+    #         for i in range(num_paragraphs):
+    #             for j in range(num_paragraphs):
+    #                 if i != j:
+    #                     edge_index.append([i, j])
+    #         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+    #         return Data(x=node_features, edge_index=edge_index)
+
+    #     tokenized_corpus = [p.split() for p in paragraphs]
+    #     bm25 = BM25Okapi(tokenized_corpus)
+        
+    #     def get_top_nodes(i):
+    #         query = tokenized_corpus[i]
+    #         scores = bm25.get_scores(query)
+            
+    #         indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
+
+    #         top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+    #         return i, top_nodes
+        
+    #     results = Parallel(n_jobs=-1)(delayed(get_top_nodes)(i) for i in range(num_paragraphs))
+    #     edge_index = []
+        
+    #     for i in range(num_paragraphs):
+    #         if i > 0:
+    #             edge_index.append([i, i-1])
+    #         if i > 1:
+    #             edge_index.append([i, i-2])
+    #         if i < num_paragraphs - 1:
+    #             edge_index.append([i, i+1])
+    #         if i < num_paragraphs - 2:
+    #             edge_index.append([i, i+2])
+            
+    #     for i, top_nodes in results:
+    #         for item in top_nodes:
+    #             edge_index.append([i, item])
+    #     edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        
+    #     return Data(x=node_features, edge_index=edge_index)
+    
+    def _build_graph(self, paragraph_encodings, paragraphs, use_bm25=True, use_cosine=False, use_all=False):
+        """
+        Builds a graph with various edge creation strategies:
+        - Fully connected graph (use_all=True)
+        - BM25-based top-k neighbors (use_bm25=True)
+        - Cosine similarity-based top-k neighbors (use_cosine=True)
+        """
         node_features = paragraph_encodings
         num_paragraphs = len(paragraph_encodings)
+        edge_index = []
 
+        # Option 1: Fully connected graph
         if self.use_all:
-            edge_index = []
             for i in range(num_paragraphs):
                 for j in range(num_paragraphs):
                     if i != j:
@@ -261,21 +316,33 @@ class GraphTrainer:
             edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
             return Data(x=node_features, edge_index=edge_index)
 
+        # Tokenize for BM25
         tokenized_corpus = [p.split() for p in paragraphs]
-        bm25 = BM25Okapi(tokenized_corpus)
         
-        def get_top_nodes(i):
-            query = tokenized_corpus[i]
-            scores = bm25.get_scores(query)
+        # Option 2: BM25-based edges
+        if self.use_bm25:
+            bm25 = BM25Okapi(tokenized_corpus)
+            def get_top_nodes_bm25(i):
+                query = tokenized_corpus[i]
+                scores = bm25.get_scores(query)
+                indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
+                top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+                return i, top_nodes
+            # print("in bm25")
+            bm25_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_bm25)(i) for i in range(num_paragraphs))
+        
+        # Option 3: Cosine Similarity-based edges
+        if self.use_cosine:
+            similarity_matrix = cosine_similarity(paragraph_encodings, paragraph_encodings)
+            def get_top_nodes_cosine(i):
+                scores = similarity_matrix[i]
+                indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
+                top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+                return i, top_nodes
             
-            indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-
-            top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-            return i, top_nodes
-        
-        results = Parallel(n_jobs=-1)(delayed(get_top_nodes)(i) for i in range(num_paragraphs))
-        edge_index = []
-        
+            cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(num_paragraphs))
+            # print("in cosine")
+        # Default sequential edges
         for i in range(num_paragraphs):
             if i > 0:
                 edge_index.append([i, i-1])
@@ -285,24 +352,31 @@ class GraphTrainer:
                 edge_index.append([i, i+1])
             if i < num_paragraphs - 2:
                 edge_index.append([i, i+2])
-            
-            # if self.use_bm25:
-            #     query = tokenized_corpus[i]
-            #     scores = bm25.get_scores(query)
 
-            #     indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-            #     indices_and_scores.sort(key=lambda x: x[1], reverse=True)
-                
-            #     min_range = min(10, num_paragraphs)
-            #     top_nodes = [idx for idx, _ in indices_and_scores[:min_range]]
+        # Add BM25 edges
+        if self.use_bm25:
+            for i, top_nodes in bm25_results:
+                for item in top_nodes:
+                    if [i, item] not in edge_index:
+                        edge_index.append([i, item])
 
-            #     for item in top_nodes:
-            #         edge_index.append([i, item])
-        for i, top_nodes in results:
-            for item in top_nodes:
-                edge_index.append([i, item])
-        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        # Add Cosine Similarity edges
+        if self.use_cosine:
+            for i, top_nodes in cosine_results:
+                for item in top_nodes:
+                    if [i, item] not in edge_index:
+                        edge_index.append([i, item])
+        # print(edge_index)
+        # check = set()
+        # for item in edge_index:
+        #     if f"{item}" in check:
+        #         print("duplicate found")
+        #     else:
+        #         check.add(f"{item}")
+        # Finalize edge_index
         
+        # exit()
+        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         return Data(x=node_features, edge_index=edge_index)
     
     
@@ -518,7 +592,13 @@ if __name__ == "__main__":
     # languages = ["russian", "english", "french", "italian", "romanian", "turkish", "ukrainian"]
     # languages = ["russian", "french", "italian", "romanian", "turkish", "ukrainian"]
     languages = ["all"]
-    comments = ["trained", "untrained"]
+    comments = [
+        
+        "trained_with_cosine", 
+        
+        "untrained_with_cosine",
+        
+        ]
     for language in languages:
         # dual_encoders = [False, True]
         dual_encoders = [True]
@@ -529,8 +609,8 @@ if __name__ == "__main__":
             # ['/srv/upadro/models/all/dual/2024-10-29__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco-ft-all_training/_final_model/query_model', 
             #  '/srv/upadro/models/all/dual/2024-10-29__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco-ft-all_training/_final_model/ctx_model']
             # ['bert-base-multilingual-cased', 'bert-base-multilingual-cased']
-            ["/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
-             "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model"],
+            # ["/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+            #  "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model"],
             
             ["castorini/mdpr-tied-pft-msmarco", "castorini/mdpr-tied-pft-msmarco"]
         ]
@@ -562,9 +642,9 @@ if __name__ == "__main__":
                                 device_str='cuda:3',
                                 dual_encoders=dual_encoder,
                                 language=language,
-                                batch_size=4,
-                                epochs=200,
-                                lr=5e-7, 
+                                batch_size=8,
+                                epochs=100,
+                                lr=1e-5, 
                                 save_checkpoints=True,
                                 step_validation=False,
                                 query_model_name_or_path=model[0],
@@ -572,8 +652,9 @@ if __name__ == "__main__":
                                 use_translations=use_translation,
                                 graph_model="gat",
                                 comments = comments[idx],
-                                use_bm25=True, 
+                                # use_bm25=True, 
                                 # use_all=True,
+                                use_cosine=True
                             )
                             trainer.train()
                 #         except Exception as e:
