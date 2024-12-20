@@ -531,6 +531,7 @@ class GraphTrainer:
             
             with tqdm(total=num_batches, desc=f"Training Epoch {epoch+1}", unit="batch") as progress_bar:
                 for i, batch in enumerate(self.batches):
+                    optimizer.zero_grad()
                     batch = self._get_new_encodings_with_graphs(points=batch, gnn_model=gnn_model)
                     # for item in batch:
                     #     print(item["paragraph_numbers"])
@@ -573,14 +574,14 @@ class GraphTrainer:
                         all_paragraphs, 
                         dim=-1
                     )
-                    
+                    # print(similarity_scores)
                     logits = similarity_scores
                     labels = torch.zeros(logits.size(0), dtype=torch.long, device=self.device)
-                    optimizer.zero_grad()
+                    
                     loss = criterion(logits, labels)
                     # print(loss.item())
                     loss.backward()
-                    
+                    optimizer.step()
                     loss_val = loss.item()
                     total_loss += loss_val
                     avg_loss = total_loss / (i + 1)
@@ -683,8 +684,8 @@ if __name__ == "__main__":
                                 dual_encoders=dual_encoder,
                                 language=language,
                                 batch_size=4,
-                                epochs=20,
-                                lr=3e-4, 
+                                epochs=40,
+                                lr=4e-3, 
                                 save_checkpoints=True,
                                 step_validation=False,
                                 query_model_name_or_path=model[0],
