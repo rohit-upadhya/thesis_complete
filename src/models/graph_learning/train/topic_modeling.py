@@ -159,15 +159,16 @@ if __name__ == "__main__":
     
     # output_topics_file = f"input/topics/{language}/topics.pkl"
     output_topics_file = f"/srv/upadro/embeddings/topics/{language}/topics.pkl"
-    device = "cuda:1"
+    device = "cuda:3"
     topic_instance = TopicClass(encoder_model, train_data_folder, output_topics_file, device)
-    topic_instance.get_topics(nr_topics=10)
+    topic_instance.get_topics(nr_topics=17)
 
     # Load the topic model and get topic embeddings
     with open(output_topics_file, "rb") as f:
         loaded_topic_model = pickle.load(f)
 
     topic_embeddings = topic_instance.get_topic_embeddings(loaded_topic_model)
+    
     with open(f"/srv/upadro/embeddings/topics/{language}/topic_embeddings.pkl", "wb") as f:
         pickle.dump(topic_embeddings, f)
     print("Topic embeddings saved.")

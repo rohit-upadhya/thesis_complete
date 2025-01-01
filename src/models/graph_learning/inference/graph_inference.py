@@ -11,14 +11,16 @@ from torch_geometric.data import Data, Batch # type: ignore
 from rank_bm25 import BM25Okapi # type: ignore
 from joblib import Parallel, delayed # type: ignore
 import heapq
+from sklearn.metrics.pairwise import cosine_similarity # type: ignore
 
 from src.models.vector_db.commons.input_loader import InputLoader
 from src.models.vector_db.inference.encoder import Encoder
 from src.models.vector_db.inference.val_encoder import ValEncoder
 from src.models.vector_db.inference.faiss_vector_db import FaissVectorDB
 # from src.models.graph_learning.inference.inference_paragraph_gat import ParagraphGAT
-from src.models.graph_learning.inference.new_inference_gat import ParagraphGAT
-
+from src.models.graph_learning.inference.new_inference_gat import ParagraphGATInference
+from src.models.graph_learning.train.new_topic_modeling import TopicModeling
+from src.models.graph_learning.encoders.graph_creation import GraphCreation
 
 class Inference:
     def __init__(
@@ -36,9 +38,17 @@ class Inference:
             tokenizer: Optional[str] = None,
             model: Optional[str] = None,
             device_: Optional[str] = None,
-            graph_model: str = '/srv/upadro/models/graph/2024-12-13___all_gat___training/_final_model/graph_model.pt'
+            graph_model: str = '/srv/upadro/models/graph/2024-12-13___all_gat___training/_final_model/graph_model.pt',
+            comment: str = 'topic',
+            use_bm25: bool = False,
+            use_topics: bool = False,
+            use_cosine: bool = False,
+            use_prev_next_two: bool = True,
         ):
         # os.makedirs('output/inference_outputs/new_splits/language_trained/romanian', exist_ok=True)
+        self.use_topics = use_topics
+        self.use_bm25 = use_bm25
+        self.use_all = False
         self.input_loader = InputLoader()
         self.file_base_name = language
         self.use_translations = use_translations
@@ -55,73 +65,78 @@ class Inference:
             self.encoder = ValEncoder(question_model=model, ctx_model=model, question_tokenizer=tokenizer, ctx_tokenizer=tokenizer, device=device_)
         else:
             self.encoder = Encoder(device=device, question_model_name_or_path=question_model_name_or_path, ctx_model_name_or_path=ctx_model_name_or_path, use_dpr=False, use_roberta=False)
-        self.faiss = FaissVectorDB(
-            # device=device
-            )
+        self.faiss = FaissVectorDB()
+        self.comment = comment
         self.graph_model = graph_model
         self.all_paragraph_encodings = []
         self.all_unique_keys = []
         self.query_paragraph_mapping = {}
-        self.model_trained_language = question_model_name_or_path.split("__")[2] if "training" in question_model_name_or_path else "base"
-    
-    def _build_graph(self, paragraph_encodings, paragraphs ):
+        self.model_trained_language = question_model_name_or_path.split("_")[-4] if "training" in question_model_name_or_path else "base"
+        self.topic_model = TopicModeling()
+        self.use_cosine = use_cosine
+        self.use_prev_next_two = use_prev_next_two
+        self.graph_creation = GraphCreation(use_topics=self.use_topics,
+            use_all=False,
+            use_bm25 = self.use_bm25,
+            use_cosine = self.use_cosine,
+            use_prev_next_two = self.use_prev_next_two,
+            topic_model = self.topic_model)
+        print("self.use_topics", self.use_topics)
+        print("self.use_cosine", self.use_cosine)
+        print("self.use_prev_next_two", self.use_prev_next_two)
+    # def _build_graph(self, paragraph_encodings, paragraphs ):
         
-        node_features = paragraph_encodings
-        num_paragraphs = len(paragraph_encodings)
-
-
-        tokenized_corpus = [p.split() for p in paragraphs]
-        bm25 = BM25Okapi(tokenized_corpus)
-        
-        def get_top_nodes(i):
-            query = tokenized_corpus[i]
-            scores = bm25.get_scores(query)
-            
-            indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-
-            top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-            return i, top_nodes
-        
-        results = Parallel(n_jobs=-1)(delayed(get_top_nodes)(i) for i in range(num_paragraphs))
-        edge_index = []
-        
-        for i in range(num_paragraphs):
-            if i > 0:
-                edge_index.append([i, i-1])
-            if i > 1:
-                edge_index.append([i, i-2])
-            if i < num_paragraphs - 1:
-                edge_index.append([i, i+1])
-            if i < num_paragraphs - 2:
-                edge_index.append([i, i+2])
-            
-            # if self.use_bm25:
-            #     query = tokenized_corpus[i]
-            #     scores = bm25.get_scores(query)
-
-            #     indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-            #     indices_and_scores.sort(key=lambda x: x[1], reverse=True)
-                
-            #     min_range = min(10, num_paragraphs)
-            #     top_nodes = [idx for idx, _ in indices_and_scores[:min_range]]
-
-            #     for item in top_nodes:
-            #         edge_index.append([i, item])
-        for i, top_nodes in results:
-            for item in top_nodes:
-                edge_index.append([i, item])
-        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-        
-        return Data(x=node_features, edge_index=edge_index)
-    
-    # def _build_graph(self, paragraph_encodings):
-    #     """
-    #     Build a graph for inference from paragraph embeddings.
-    #     Here we use the same logic as training: create edges
-    #     linking each paragraph node to its neighbors.
-    #     """
+    #     node_features = paragraph_encodings
     #     num_paragraphs = len(paragraph_encodings)
     #     edge_index = []
+    #     if self.use_topics:
+    #         topic_embeddings = self.topic_model.obtain_topic_embeddings(embeddings=paragraph_encodings, paragraphs=paragraphs)
+    #         print(topic_embeddings.shape)
+    #         topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
+    #         node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
+    #         edge_weights = []
+            
+    #         for i, topic in enumerate(topic_embeddings):
+    #             topic = torch.tensor(topic).unsqueeze(0)
+    #             for j, paragraph in enumerate(paragraph_encodings):
+    #                 paragraph = paragraph.unsqueeze(0)
+    #                 edge_index.append([i+len(paragraph_encodings), j])
+    #                 edge_index.append([j, i+len(paragraph_encodings)])
+    #                 weight = cosine_similarity(
+    #                     topic,
+    #                     paragraph
+    #                 ).item()
+    #                 edge_weights.extend([weight, weight])
+    #         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+    #         data = Data(x=node_features, edge_index=edge_index)
+    #         data.num_paragraphs = num_paragraphs
+    #         data.num_topics = len(topic_embeddings)
+    #         return data
+    #     if self.use_bm25:
+    #         tokenized_corpus = [p.split() for p in paragraphs]
+    #         bm25 = BM25Okapi(tokenized_corpus)
+            
+    #         def get_top_nodes(i):
+    #             query = tokenized_corpus[i]
+    #             scores = bm25.get_scores(query)
+                
+    #             indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
+
+    #             top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+    #             return i, top_nodes
+            
+    #         results = Parallel(n_jobs=-1)(delayed(get_top_nodes)(i) for i in range(num_paragraphs))
+        
+    #     if self.use_cosine:
+    #         similarity_matrix = cosine_similarity(paragraph_encodings, paragraph_encodings)
+    #         def get_top_nodes_cosine(i):
+    #             scores = similarity_matrix[i]
+    #             indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
+    #             top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+    #             return i, top_nodes
+            
+    #         cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(num_paragraphs))
+            
     #     for i in range(num_paragraphs):
     #         if i > 0:
     #             edge_index.append([i, i-1])
@@ -131,14 +146,326 @@ class Inference:
     #             edge_index.append([i, i+1])
     #         if i < num_paragraphs - 2:
     #             edge_index.append([i, i+2])
+            
+    #     if self.use_bm25:
+    #         for i, top_nodes in results:
+    #             for item in top_nodes:
+    #                 edge_index.append([i, item])
+                    
+    #     if self.use_cosine:
+    #         for i, top_nodes in cosine_results:
+    #             for item in top_nodes:
+    #                 if [i, item] not in edge_index:
+    #                     edge_index.append([i, item])
+                        
     #     edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-    #     node_features = torch.tensor(paragraph_encodings).float()
-    #     return Data(x=node_features, edge_index=edge_index)
+    #     data = Data(x=node_features, edge_index=edge_index)
+    #     data.num_paragraphs = num_paragraphs
+    #     data.num_topics = 0
+    #     return data
     
+    def _build_graph(self, paragraph_encodings, paragraphs, use_bm25=True, use_cosine=False, use_all=False):
+        """
+        Builds a graph with various edge creation strategies:
+        - Fully connected graph (use_all=True)
+        - BM25-based top-k neighbors (use_bm25=True)
+        - Cosine similarity-based top-k neighbors (use_cosine=True)
+        """
+        node_features = paragraph_encodings
+        num_paragraphs = len(paragraph_encodings)
+        edge_index = []
+        topic_embeddings = []
+        # edge_weights = []
+        if self.use_topics:
+            _, topic_embeddings = self.topic_model.obtain_topic_embeddings(embeddings=paragraph_encodings, paragraphs=paragraphs)
+            topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
+            node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
+            
+            # paragraph_encodings_normalized = F.normalize(paragraph_encodings, p=2, dim=1)
+            # topics_tensor_normalized = F.normalize(topics_tensor, p=2, dim=1)
+            # cosine_similarity_matrix = torch.matmul(topics_tensor_normalized, paragraph_encodings_normalized.T)
+            for i, topic in enumerate(topic_embeddings):
+                # topic = torch.tensor(topic).unsqueeze(0)
+                for j, paragraph in enumerate(paragraph_encodings):
+                    # paragraph = paragraph.unsqueeze(0)
+                    # weight = probability[j][i]
+                    # weight = cosine_similarity(paragraph, topic).item()
+                    # weight = cosine_similarity_matrix[i, j].item()
+                    edge_index.append([i+len(paragraph_encodings), j])
+                    edge_index.append([j, i+len(paragraph_encodings)])
+                    # edge_weights.extend([weight, weight])
+                    
+        if self.use_all:
+            for i in range(num_paragraphs):
+                for j in range(num_paragraphs):
+                    if i != j:
+                        edge_index.append([i, j])
+            edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+            return Data(x=node_features, edge_index=edge_index)
+
+        
+        
+        if self.use_bm25:
+            tokenized_corpus = [p.split() for p in paragraphs]
+            bm25 = BM25Okapi(tokenized_corpus)
+            def get_top_nodes_bm25(i):
+                query = tokenized_corpus[i]
+                scores = bm25.get_scores(query)
+                indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
+                top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+                return i, top_nodes
+            bm25_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_bm25)(i) for i in range(num_paragraphs))
+        
+        if self.use_cosine:
+            similarity_matrix = cosine_similarity(paragraph_encodings, paragraph_encodings)
+            def get_top_nodes_cosine(i):
+                scores = similarity_matrix[i]
+                indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
+                top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+                return i, top_nodes
+            
+            cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(num_paragraphs))
+        
+        if self.use_prev_next_two:
+            
+            # paragraph_encodings_normalized = F.normalize(paragraph_encodings, p=2, dim=1)
+            # cosine_similarity_matrix = torch.matmul(paragraph_encodings_normalized, paragraph_encodings_normalized.T)
+            
+            for i in range(num_paragraphs):
+                if i > 0:
+                    if [i, i-1] not in edge_index:
+                        edge_index.append([i, i-1])
+                        # weight = cosine_similarity(
+                        #     paragraph_encodings[i].unsqueeze(0),
+                        #     paragraph_encodings[i-1].unsqueeze(0)
+                        # ).item()
+                        # weight = cosine_similarity_matrix[i, i - 1].item()
+                        # edge_weights.append(weight)
+                if i > 1:
+                    if [i, i-2] not in edge_index:
+                        edge_index.append([i, i-2])
+                        # weight = cosine_similarity(
+                        #     paragraph_encodings[i].unsqueeze(0),
+                        #     paragraph_encodings[i-2].unsqueeze(0)
+                        # ).item()
+                        # weight = cosine_similarity_matrix[i, i - 2].item()
+                        # edge_weights.append(weight)
+                if i < num_paragraphs - 1:
+                    
+                    if [i, i+1] not in edge_index:
+                        edge_index.append([i, i+1])
+                        # weight = cosine_similarity(
+                        #     paragraph_encodings[i].unsqueeze(0),
+                        #     paragraph_encodings[i+1].unsqueeze(0)
+                        # ).item()
+                        # weight = cosine_similarity_matrix[i, i + 1].item()
+                        # edge_weights.append(weight)
+                if i < num_paragraphs - 2:
+                    if [i, i+2] not in edge_index:
+                        edge_index.append([i, i+2])
+                        # weight = cosine_similarity(
+                        #     paragraph_encodings[i].unsqueeze(0),
+                        #     paragraph_encodings[i+2].unsqueeze(0)
+                        # ).item()
+                        # weight = cosine_similarity_matrix[i, i + 2].item()
+                        # edge_weights.append(weight)
+
+        if self.use_bm25:
+            for i, top_nodes in bm25_results:
+                for item in top_nodes:
+                    if [i, item] not in edge_index:
+                        edge_index.append([i, item])
+
+        if self.use_cosine:
+            for i, top_nodes in cosine_results:
+                for item in top_nodes:
+                    if [i, item] not in edge_index:
+                        edge_index.append([i, item])
+                                    
+        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        # edge_attr = torch.tensor(edge_weights, dtype=torch.float).t().contiguous()
+        
+        # i = 0
+        # while i < len(edge_attr):
+        #     print(edge_index[i], edge_attr[i])
+            
+        # data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
+        data = Data(x=node_features, edge_index=edge_index)
+        
+        data.num_paragraphs = num_paragraphs
+        if self.use_topics:
+            data.num_topics = len(topic_embeddings)
+        else:
+            data.num_topics = 0
+        # self.visualize_graph(data=data)
+        # print(data.num_topics)
+        return data
+        # node_features = paragraph_encodings
+        # num_paragraphs = len(paragraph_encodings)
+        # edge_index = []
+        # topic_embeddings = []
+        # edge_weights = []
+        # if self.use_topics:
+        #     # try:
+        #     # print(paragraph_encodings.shape)
+        #     probability, topic_embeddings = self.topic_model.obtain_topic_embeddings(embeddings=paragraph_encodings, paragraphs=paragraphs)
+        #     # normalized_probabilities = probability / probability.sum(axis=1, keepdims=True)
+        #     # print(topic_embeddings.shape)
+        #     # if topic_embeddings is None:
+        #     #     topic_embeddings = self._load_topics()
+        #     topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
+        #     node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
+            
+        #     for i, topic in enumerate(topic_embeddings):
+        #         topic = torch.tensor(topic).unsqueeze(0)
+        #         for j, paragraph in enumerate(paragraph_encodings):
+        #             paragraph = paragraph.unsqueeze(0)
+        #             weight = probability[j][i]
+        #             if weight > 0.1:
+        #                 edge_index.append([i+len(paragraph_encodings), j])
+        #                 edge_index.append([j, i+len(paragraph_encodings)])
+        #             # weight = probability[j][i]
+        #             # cosine_similarity(
+        #             #     topic,
+        #             #     paragraph
+        #             #     # torch.tensor(topic).unsqueeze(0),
+        #             #     # torch.tensor(paragraph).unsqueeze(0)
+        #             # ).item()
+        #             # edge_weights.extend([weight, weight])
+                    
+        #     # edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        #     # data = Data(x=node_features, edge_index=edge_index, edge_attr=torch.tensor(edge_weights, dtype=torch.float))
+        #     # data.num_paragraphs = num_paragraphs
+        #     # data.num_topics = len(topic_embeddings)
+        #     # print("inside graph")
+        #     # self.visualize_graph(data=data)
+        #     # return data
+        # # if self.use_all:
+        # #     for i in range(num_paragraphs):
+        # #         for j in range(num_paragraphs):
+        # #             if i != j:
+        # #                 edge_index.append([i, j])
+        # #     edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        # #     return Data(x=node_features, edge_index=edge_index)
+
+        # tokenized_corpus = [p.split() for p in paragraphs]
+        
+        # if self.use_bm25:
+        #     bm25 = BM25Okapi(tokenized_corpus)
+        #     def get_top_nodes_bm25(i):
+        #         query = tokenized_corpus[i]
+        #         scores = bm25.get_scores(query)
+        #         indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
+        #         top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+        #         return i, top_nodes
+        #     bm25_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_bm25)(i) for i in range(num_paragraphs))
+        
+        # if self.use_cosine:
+        #     similarity_matrix = cosine_similarity(paragraph_encodings, paragraph_encodings)
+        #     def get_top_nodes_cosine(i):
+        #         scores = similarity_matrix[i]
+        #         indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
+        #         top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+        #         return i, top_nodes
+            
+        #     cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(num_paragraphs))
+        
+        # if self.use_prev_next_two:
+        #     for i in range(num_paragraphs):
+        #         if i > 0:
+        #             if [i, i-1] not in edge_index:
+        #                 edge_index.append([i, i-1])
+        #             if [i-1, i] not in edge_index:
+        #                 edge_index.append([i-1, i])
+        #         if i > 1:
+        #             if [i, i-2] not in edge_index:
+        #                 edge_index.append([i, i-2])
+        #             if [i-2, i] not in edge_index:
+        #                 edge_index.append([i-2, i])
+        #         if i < num_paragraphs - 1:
+        #             if [i, i+1] not in edge_index:
+        #                 edge_index.append([i, i+1])
+        #             if [i+1, i] not in edge_index:
+        #                 edge_index.append([i+1, i])
+        #         if i < num_paragraphs - 2:
+        #             if [i, i+2] not in edge_index:
+        #                 edge_index.append([i, i+2])
+        #             if [i+2, i] not in edge_index:
+        #                 edge_index.append([i+2, i])
+
+        # if self.use_bm25:
+        #     for i, top_nodes in bm25_results:
+        #         for item in top_nodes:
+        #             if [i, item] not in edge_index:
+        #                 edge_index.append([i, item])
+
+        # if self.use_cosine:
+        #     for i, top_nodes in cosine_results:
+        #         for item in top_nodes:
+        #             if [i, item] not in edge_index:
+        #                 edge_index.append([i, item])
+                        
+        # edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        # data = Data(x=node_features, edge_index=edge_index, edge_attr=torch.tensor(edge_weights, dtype=torch.float))
+        # data.num_paragraphs = num_paragraphs
+        # if self.use_topics:
+        #     data.num_topics = len(topic_embeddings)
+        # else:
+        #     data.num_topics = 0
+        # # self.visualize_graph(data=data)
+        # # print(data.num_topics)
+        # return data
+    
+    def visualize_graph(self, data, file_name="src/models/graph_learning/train/graph.png"):
+        """
+        Convert a PyTorch Geometric Data object to a NetworkX graph and visualize it,
+        ensuring correct edge weight mapping.
+        """
+        import matplotlib.pyplot as plt
+        import networkx as nx
+        from torch_geometric.utils import to_networkx
+
+        # Convert the graph to NetworkX
+        G = to_networkx(data, to_undirected=True)
+
+        plt.figure(figsize=(8, 8))
+        pos = nx.spring_layout(G, seed=42)  # Layout for positioning nodes
+
+        # Draw nodes
+        nx.draw(
+            G,
+            pos,
+            with_labels=True,
+            node_color='skyblue',
+            edge_color='gray',
+            node_size=800,
+            font_size=8,
+            font_color='black',
+            alpha=0.9
+        )
+
+        # Map edge weights to edges explicitly
+        edge_weights = data.edge_attr.cpu().numpy()  # Ensure edge_attr is on CPU
+        edge_index = data.edge_index.cpu().numpy().T  # Convert edge_index to numpy for mapping
+        edge_labels = {}
+
+        for idx, (src, dst) in enumerate(edge_index):
+            if (src, dst) in G.edges():
+                edge_labels[(src, dst)] = f"{edge_weights[idx]:.2f}"
+            if (dst, src) in G.edges():  # Add for undirected case
+                edge_labels[(dst, src)] = f"{edge_weights[idx]:.2f}"
+
+        # Draw edge labels
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
+
+        plt.title("Graph Visualization with Edge Weights")
+        plt.savefig(file_name, dpi=300, bbox_inches='tight')
+        plt.show()
+        
     def _get_graph_encodings(self, gnn_model, encodings, all_paragraphs):
-        graph = self._build_graph(encodings, paragraphs=all_paragraphs)
-        updated_data = gnn_model(graph)
-        updated_paragraph_vectors = updated_data.x
+        graph_data = self._build_graph(encodings, paragraphs=all_paragraphs)
+        updated_data = gnn_model(graph_data)
+        updated_paragraph_vectors = updated_data.x[:graph_data.num_paragraphs]
         return updated_paragraph_vectors.detach()
     
     def _load_all_input_from_dir(self, input_data_path):
@@ -254,7 +581,7 @@ class Inference:
         Load the trained graph model from a saved state dict.
         """
         if graph_model_type == "gat":
-            model = ParagraphGAT(hidden_dim=hidden_dim)
+            model = ParagraphGATInference(hidden_dim=hidden_dim)
         else:
             raise NotImplementedError("Load the appropriate model architecture here.")
 
@@ -289,9 +616,8 @@ class Inference:
         print(f"Recall: {recall}")
         
         recall_data = {}
-        # recall_path = os.path.join('output/inference_outputs/test_datapoints',self.recall_file_name)
         if self.save_recall:
-            recall_path = os.path.join('output/inference_outputs/new_splits/graph/trained/', self.model_trained_language, self.folder_name, self.recall_file_name)
+            recall_path = os.path.join('output/inference_outputs/new_splits/graph/trained/',self.comment, self.model_trained_language, self.folder_name, self.recall_file_name)
             recall_dir = os.path.dirname(recall_path)
             os.makedirs(recall_dir, exist_ok=True)
             if os.path.exists(recall_path):
@@ -326,19 +652,28 @@ if __name__ == "__main__":
     #      "facebook/dpr-ctx_encoder-single-nq-base"]
     # ]
     
-    files = ['unique_query', 'test']
+    files = [
+            'unique_query', 
+            'test'
+        ]
     # files = ['test']
     models = [
-        
-        # ['/srv/upadro/models/all/dual/2024-10-29__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco-ft-all_training/_final_model/query_model', 
-        #  '/srv/upadro/models/all/dual/2024-10-29__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco-ft-all_training/_final_model/ctx_model'],
-        
-        ["/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
-             "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model"],
-        
-        # ["castorini/mdpr-tied-pft-msmarco", "castorini/mdpr-tied-pft-msmarco"]
-    ]
+        [
+                    "castorini/mdpr-tied-pft-msmarco",
+                    "castorini/mdpr-tied-pft-msmarco",
+                    "/srv/upadro/models/graph/new_gat/2024-12-31___all_gat_no_weight_0_shot_use_cosine_use_prev_next_two_training/checkpoints/epoch_5/graph_model.pt",
+                    "no_weight_0_shot_use_cosine_use_prev_next_two",
+                    {
+                        "use_topics": False,
+                        "use_cosine": True,
+                        "use_prev_next_two": True
+                    }
+                ],
+            ]
+
     
+    
+    print(models[0][4])
     for file in files:
         for model in models:
             translations  = [
@@ -347,9 +682,9 @@ if __name__ == "__main__":
                 ]
             for use_translations in translations:
                 # languages = ["english", "russian", "french", "italian", "romanian", "turkish", "ukrainian"]
-                languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+                # languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
                 # languages = ["french", "italian", "romanian", "russian", "turkish", "ukrainian"]
-                # languages = ["russian"]
+                languages = ["italian"]
                 for language in tqdm(languages, desc="Processing Languages"):
                     print(f"Processing language: {language}")
                     print(f"translations : {use_translations}")
@@ -357,15 +692,21 @@ if __name__ == "__main__":
                     inference_folder = f"input/train_infer/{language}/new_split/{file}"
                     bulk_inference = True
                     # use_translations = False
+                    print(model[3])
                     inference = Inference(
                         inference_folder=inference_folder, 
                         bulk_inference=bulk_inference,
                         use_translations=use_translations,
-                        device='cuda:3',
+                        device='cuda:2',
                         language=language,
                         question_model_name_or_path = model[0],
                         ctx_model_name_or_path = model[1],
-                        graph_model = '/srv/upadro/models/graph/2024-12-18___all_gat_trained_mdpr_with_cosine_training/checkpoints/epoch_5/graph_model.pt'
+                        graph_model = model[2],
+                        comment=model[3],
+                        use_bm25=False,
+                        use_topics=model[4]["use_topics"],
+                        use_cosine=model[4]["use_cosine"],
+                        use_prev_next_two=model[4]["use_prev_next_two"],
                     )
                     inference.main()
                     
