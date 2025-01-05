@@ -19,7 +19,7 @@ from src.models.vector_db.inference.val_encoder import ValEncoder
 from src.models.vector_db.inference.faiss_vector_db import FaissVectorDB
 # from src.models.graph_learning.inference.inference_paragraph_gat import ParagraphGAT
 from src.models.graph_learning.inference.new_inference_gat import ParagraphGATInference
-from src.models.graph_learning.train.new_topic_modeling import TopicModeling
+from models.graph_learning.inference.inference_topic_modeling import TopicModeling
 from src.models.graph_learning.encoders.graph_creation import GraphCreation
 
 class Inference:
@@ -45,7 +45,6 @@ class Inference:
             use_cosine: bool = False,
             use_prev_next_two: bool = True,
         ):
-        # os.makedirs('output/inference_outputs/new_splits/language_trained/romanian', exist_ok=True)
         self.use_topics = use_topics
         self.use_bm25 = use_bm25
         self.use_all = False
@@ -84,85 +83,6 @@ class Inference:
         print("self.use_topics", self.use_topics)
         print("self.use_cosine", self.use_cosine)
         print("self.use_prev_next_two", self.use_prev_next_two)
-    # def _build_graph(self, paragraph_encodings, paragraphs ):
-        
-    #     node_features = paragraph_encodings
-    #     num_paragraphs = len(paragraph_encodings)
-    #     edge_index = []
-    #     if self.use_topics:
-    #         topic_embeddings = self.topic_model.obtain_topic_embeddings(embeddings=paragraph_encodings, paragraphs=paragraphs)
-    #         print(topic_embeddings.shape)
-    #         topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
-    #         node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
-    #         edge_weights = []
-            
-    #         for i, topic in enumerate(topic_embeddings):
-    #             topic = torch.tensor(topic).unsqueeze(0)
-    #             for j, paragraph in enumerate(paragraph_encodings):
-    #                 paragraph = paragraph.unsqueeze(0)
-    #                 edge_index.append([i+len(paragraph_encodings), j])
-    #                 edge_index.append([j, i+len(paragraph_encodings)])
-    #                 weight = cosine_similarity(
-    #                     topic,
-    #                     paragraph
-    #                 ).item()
-    #                 edge_weights.extend([weight, weight])
-    #         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-    #         data = Data(x=node_features, edge_index=edge_index)
-    #         data.num_paragraphs = num_paragraphs
-    #         data.num_topics = len(topic_embeddings)
-    #         return data
-    #     if self.use_bm25:
-    #         tokenized_corpus = [p.split() for p in paragraphs]
-    #         bm25 = BM25Okapi(tokenized_corpus)
-            
-    #         def get_top_nodes(i):
-    #             query = tokenized_corpus[i]
-    #             scores = bm25.get_scores(query)
-                
-    #             indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-
-    #             top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-    #             return i, top_nodes
-            
-    #         results = Parallel(n_jobs=-1)(delayed(get_top_nodes)(i) for i in range(num_paragraphs))
-        
-    #     if self.use_cosine:
-    #         similarity_matrix = cosine_similarity(paragraph_encodings, paragraph_encodings)
-    #         def get_top_nodes_cosine(i):
-    #             scores = similarity_matrix[i]
-    #             indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-    #             top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-    #             return i, top_nodes
-            
-    #         cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(num_paragraphs))
-            
-    #     for i in range(num_paragraphs):
-    #         if i > 0:
-    #             edge_index.append([i, i-1])
-    #         if i > 1:
-    #             edge_index.append([i, i-2])
-    #         if i < num_paragraphs - 1:
-    #             edge_index.append([i, i+1])
-    #         if i < num_paragraphs - 2:
-    #             edge_index.append([i, i+2])
-            
-    #     if self.use_bm25:
-    #         for i, top_nodes in results:
-    #             for item in top_nodes:
-    #                 edge_index.append([i, item])
-                    
-    #     if self.use_cosine:
-    #         for i, top_nodes in cosine_results:
-    #             for item in top_nodes:
-    #                 if [i, item] not in edge_index:
-    #                     edge_index.append([i, item])
-                        
-    #     edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-    #     data = Data(x=node_features, edge_index=edge_index)
-    #     data.num_paragraphs = num_paragraphs
-    #     data.num_topics = 0
-    #     return data
     
     def _build_graph(self, paragraph_encodings, paragraphs, use_bm25=True, use_cosine=False, use_all=False):
         """
@@ -181,19 +101,10 @@ class Inference:
             topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
             node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
             
-            # paragraph_encodings_normalized = F.normalize(paragraph_encodings, p=2, dim=1)
-            # topics_tensor_normalized = F.normalize(topics_tensor, p=2, dim=1)
-            # cosine_similarity_matrix = torch.matmul(topics_tensor_normalized, paragraph_encodings_normalized.T)
             for i, topic in enumerate(topic_embeddings):
-                # topic = torch.tensor(topic).unsqueeze(0)
                 for j, paragraph in enumerate(paragraph_encodings):
-                    # paragraph = paragraph.unsqueeze(0)
-                    # weight = probability[j][i]
-                    # weight = cosine_similarity(paragraph, topic).item()
-                    # weight = cosine_similarity_matrix[i, j].item()
                     edge_index.append([i+len(paragraph_encodings), j])
                     edge_index.append([j, i+len(paragraph_encodings)])
-                    # edge_weights.extend([weight, weight])
                     
         if self.use_all:
             for i in range(num_paragraphs):
@@ -202,8 +113,6 @@ class Inference:
                         edge_index.append([i, j])
             edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
             return Data(x=node_features, edge_index=edge_index)
-
-        
         
         if self.use_bm25:
             tokenized_corpus = [p.split() for p in paragraphs]
@@ -228,47 +137,21 @@ class Inference:
         
         if self.use_prev_next_two:
             
-            # paragraph_encodings_normalized = F.normalize(paragraph_encodings, p=2, dim=1)
-            # cosine_similarity_matrix = torch.matmul(paragraph_encodings_normalized, paragraph_encodings_normalized.T)
             
             for i in range(num_paragraphs):
                 if i > 0:
                     if [i, i-1] not in edge_index:
                         edge_index.append([i, i-1])
-                        # weight = cosine_similarity(
-                        #     paragraph_encodings[i].unsqueeze(0),
-                        #     paragraph_encodings[i-1].unsqueeze(0)
-                        # ).item()
-                        # weight = cosine_similarity_matrix[i, i - 1].item()
-                        # edge_weights.append(weight)
                 if i > 1:
                     if [i, i-2] not in edge_index:
                         edge_index.append([i, i-2])
-                        # weight = cosine_similarity(
-                        #     paragraph_encodings[i].unsqueeze(0),
-                        #     paragraph_encodings[i-2].unsqueeze(0)
-                        # ).item()
-                        # weight = cosine_similarity_matrix[i, i - 2].item()
-                        # edge_weights.append(weight)
                 if i < num_paragraphs - 1:
                     
                     if [i, i+1] not in edge_index:
                         edge_index.append([i, i+1])
-                        # weight = cosine_similarity(
-                        #     paragraph_encodings[i].unsqueeze(0),
-                        #     paragraph_encodings[i+1].unsqueeze(0)
-                        # ).item()
-                        # weight = cosine_similarity_matrix[i, i + 1].item()
-                        # edge_weights.append(weight)
                 if i < num_paragraphs - 2:
                     if [i, i+2] not in edge_index:
                         edge_index.append([i, i+2])
-                        # weight = cosine_similarity(
-                        #     paragraph_encodings[i].unsqueeze(0),
-                        #     paragraph_encodings[i+2].unsqueeze(0)
-                        # ).item()
-                        # weight = cosine_similarity_matrix[i, i + 2].item()
-                        # edge_weights.append(weight)
 
         if self.use_bm25:
             for i, top_nodes in bm25_results:
@@ -283,13 +166,7 @@ class Inference:
                         edge_index.append([i, item])
                                     
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-        # edge_attr = torch.tensor(edge_weights, dtype=torch.float).t().contiguous()
         
-        # i = 0
-        # while i < len(edge_attr):
-        #     print(edge_index[i], edge_attr[i])
-            
-        # data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
         data = Data(x=node_features, edge_index=edge_index)
         
         data.num_paragraphs = num_paragraphs
@@ -297,124 +174,7 @@ class Inference:
             data.num_topics = len(topic_embeddings)
         else:
             data.num_topics = 0
-        # self.visualize_graph(data=data)
-        # print(data.num_topics)
         return data
-        # node_features = paragraph_encodings
-        # num_paragraphs = len(paragraph_encodings)
-        # edge_index = []
-        # topic_embeddings = []
-        # edge_weights = []
-        # if self.use_topics:
-        #     # try:
-        #     # print(paragraph_encodings.shape)
-        #     probability, topic_embeddings = self.topic_model.obtain_topic_embeddings(embeddings=paragraph_encodings, paragraphs=paragraphs)
-        #     # normalized_probabilities = probability / probability.sum(axis=1, keepdims=True)
-        #     # print(topic_embeddings.shape)
-        #     # if topic_embeddings is None:
-        #     #     topic_embeddings = self._load_topics()
-        #     topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
-        #     node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
-            
-        #     for i, topic in enumerate(topic_embeddings):
-        #         topic = torch.tensor(topic).unsqueeze(0)
-        #         for j, paragraph in enumerate(paragraph_encodings):
-        #             paragraph = paragraph.unsqueeze(0)
-        #             weight = probability[j][i]
-        #             if weight > 0.1:
-        #                 edge_index.append([i+len(paragraph_encodings), j])
-        #                 edge_index.append([j, i+len(paragraph_encodings)])
-        #             # weight = probability[j][i]
-        #             # cosine_similarity(
-        #             #     topic,
-        #             #     paragraph
-        #             #     # torch.tensor(topic).unsqueeze(0),
-        #             #     # torch.tensor(paragraph).unsqueeze(0)
-        #             # ).item()
-        #             # edge_weights.extend([weight, weight])
-                    
-        #     # edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-        #     # data = Data(x=node_features, edge_index=edge_index, edge_attr=torch.tensor(edge_weights, dtype=torch.float))
-        #     # data.num_paragraphs = num_paragraphs
-        #     # data.num_topics = len(topic_embeddings)
-        #     # print("inside graph")
-        #     # self.visualize_graph(data=data)
-        #     # return data
-        # # if self.use_all:
-        # #     for i in range(num_paragraphs):
-        # #         for j in range(num_paragraphs):
-        # #             if i != j:
-        # #                 edge_index.append([i, j])
-        # #     edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-        # #     return Data(x=node_features, edge_index=edge_index)
-
-        # tokenized_corpus = [p.split() for p in paragraphs]
-        
-        # if self.use_bm25:
-        #     bm25 = BM25Okapi(tokenized_corpus)
-        #     def get_top_nodes_bm25(i):
-        #         query = tokenized_corpus[i]
-        #         scores = bm25.get_scores(query)
-        #         indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-        #         top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-        #         return i, top_nodes
-        #     bm25_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_bm25)(i) for i in range(num_paragraphs))
-        
-        # if self.use_cosine:
-        #     similarity_matrix = cosine_similarity(paragraph_encodings, paragraph_encodings)
-        #     def get_top_nodes_cosine(i):
-        #         scores = similarity_matrix[i]
-        #         indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-        #         top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-        #         return i, top_nodes
-            
-        #     cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(num_paragraphs))
-        
-        # if self.use_prev_next_two:
-        #     for i in range(num_paragraphs):
-        #         if i > 0:
-        #             if [i, i-1] not in edge_index:
-        #                 edge_index.append([i, i-1])
-        #             if [i-1, i] not in edge_index:
-        #                 edge_index.append([i-1, i])
-        #         if i > 1:
-        #             if [i, i-2] not in edge_index:
-        #                 edge_index.append([i, i-2])
-        #             if [i-2, i] not in edge_index:
-        #                 edge_index.append([i-2, i])
-        #         if i < num_paragraphs - 1:
-        #             if [i, i+1] not in edge_index:
-        #                 edge_index.append([i, i+1])
-        #             if [i+1, i] not in edge_index:
-        #                 edge_index.append([i+1, i])
-        #         if i < num_paragraphs - 2:
-        #             if [i, i+2] not in edge_index:
-        #                 edge_index.append([i, i+2])
-        #             if [i+2, i] not in edge_index:
-        #                 edge_index.append([i+2, i])
-
-        # if self.use_bm25:
-        #     for i, top_nodes in bm25_results:
-        #         for item in top_nodes:
-        #             if [i, item] not in edge_index:
-        #                 edge_index.append([i, item])
-
-        # if self.use_cosine:
-        #     for i, top_nodes in cosine_results:
-        #         for item in top_nodes:
-        #             if [i, item] not in edge_index:
-        #                 edge_index.append([i, item])
-                        
-        # edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-        # data = Data(x=node_features, edge_index=edge_index, edge_attr=torch.tensor(edge_weights, dtype=torch.float))
-        # data.num_paragraphs = num_paragraphs
-        # if self.use_topics:
-        #     data.num_topics = len(topic_embeddings)
-        # else:
-        #     data.num_topics = 0
-        # # self.visualize_graph(data=data)
-        # # print(data.num_topics)
-        # return data
     
     def visualize_graph(self, data, file_name="src/models/graph_learning/train/graph.png"):
         """
@@ -659,17 +419,175 @@ if __name__ == "__main__":
     # files = ['test']
     models = [
         [
-                    "castorini/mdpr-tied-pft-msmarco",
-                    "castorini/mdpr-tied-pft-msmarco",
-                    "/srv/upadro/models/graph/new_gat/2024-12-31___all_gat_no_weight_0_shot_use_cosine_use_prev_next_two_training/checkpoints/epoch_5/graph_model.pt",
-                    "no_weight_0_shot_use_cosine_use_prev_next_two",
-                    {
-                        "use_topics": False,
-                        "use_cosine": True,
-                        "use_prev_next_two": True
-                    }
-                ],
-            ]
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_2/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_5/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_10/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_15/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_20/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_25/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_30/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_35/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_40/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_45/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_50/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_55/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_60/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_65/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ],
+    [
+        "castorini/mdpr-tied-pft-msmarco",
+        "castorini/mdpr-tied-pft-msmarco",
+        "/srv/upadro/models/graph/new_gat/2025-01-04___all_gat_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_69/graph_model.pt",
+        "threshold_no_weight_0_shot_use_topics_use_prev_next_two",
+        {
+            "use_topics": True,
+            "use_cosine": False,
+            "use_prev_next_two": True
+        }
+    ]
+]
+
+
+
+
 
     
     

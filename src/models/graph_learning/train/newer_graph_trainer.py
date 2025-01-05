@@ -17,12 +17,13 @@ import heapq
 from sklearn.metrics.pairwise import cosine_similarity # type: ignore
 import torch.nn.functional as F # type: ignore
 
+from sentence_transformers import SentenceTransformer
 from src.models.single_datapoints.common.utils import current_date
 from src.models.single_datapoints.common.data_loader import InputLoader
 from src.models.graph_learning.encoders.paragraph_gcn import ParagraphGNN
 from src.models.graph_learning.encoders.paragraph_gat import ParagraphGAT
 from src.models.graph_learning.encoders.graph_encoder import GraphEncoder as Encoder
-from src.models.graph_learning.train.new_topic_modeling import TopicModeling
+from src.models.graph_learning.train.newer_topic_modeling import TopicModeling
 
 class GraphTrainer:
     def __init__(
@@ -54,6 +55,8 @@ class GraphTrainer:
         use_cosine = False,
         use_topics = False,
         use_prev_next_two = True,
+        sentence_model: Text ="all-mpnet-base-v2",
+        use_threshold: bool = False,
     ):
         self.use_dpr = use_dpr
         self.use_topics = use_topics
@@ -85,9 +88,11 @@ class GraphTrainer:
         self.use_all = use_all
         self.use_cosine = use_cosine
         self.use_prev_next_two = use_prev_next_two
+        self.use_threshold = use_threshold
         if self.config_file == "":
             raise ValueError("config file empty, please contact admin")
-        self.topic_model = TopicModeling()
+        self.topic_encoder_model = SentenceTransformer(sentence_model)
+        self.topic_model = TopicModeling(embedding_model=self.topic_encoder_model)
         self.config = self.input_loader.load_config(self.config_file)  # type: ignore
         self.config = self.config["dual_encoder"] if self.dual_encoders else self.config["single_encoder"] # type: ignore
 
@@ -126,7 +131,9 @@ class GraphTrainer:
                     files.append(os.path.join(dirpath, filename))
         total_datapoints = []
         for file in files:
+            print(file)
             individual_datapoints = self.input_loader.load_data(data_file=file)
+            
             total_datapoints.extend(individual_datapoints) # type: ignore
         
         
@@ -262,7 +269,7 @@ class GraphTrainer:
         return top_5
     
     
-    def _build_graph(self, paragraph_encodings, paragraphs, use_bm25=True, use_cosine=False, use_all=False):
+    def _build_graph(self, paragraph_encodings, paragraphs):
         """
         Builds a graph with various edge creation strategies:
         - Fully connected graph (use_all=True)
@@ -273,16 +280,19 @@ class GraphTrainer:
         num_paragraphs = len(paragraph_encodings)
         edge_index = []
         topic_embeddings = []
-        # edge_weights = []
         if self.use_topics:
-            _, topic_embeddings = self.topic_model.obtain_topic_embeddings(embeddings=paragraph_encodings, paragraphs=paragraphs)
+            prob, topic_embeddings = self.topic_model.obtain_topic_embeddings(paragraphs=paragraphs)
             topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
             node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
-            
             for i, topic in enumerate(topic_embeddings):
                 for j, paragraph in enumerate(paragraph_encodings):
-                    edge_index.append([i+len(paragraph_encodings), j])
-                    edge_index.append([j, i+len(paragraph_encodings)])
+                    if self.use_threshold:
+                        if prob[j][i] > 0.25: 
+                            edge_index.append([i+len(paragraph_encodings), j])
+                            edge_index.append([j, i+len(paragraph_encodings)])
+                    else:
+                        edge_index.append([i+len(paragraph_encodings), j])
+                        edge_index.append([j, i+len(paragraph_encodings)])
                     
         if self.use_all:
             for i in range(num_paragraphs):
@@ -292,9 +302,9 @@ class GraphTrainer:
             edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
             return Data(x=node_features, edge_index=edge_index)
 
-        tokenized_corpus = [p.split() for p in paragraphs]
         
         if self.use_bm25:
+            tokenized_corpus = [p.split() for p in paragraphs]
             bm25 = BM25Okapi(tokenized_corpus)
             def get_top_nodes_bm25(i):
                 query = tokenized_corpus[i]
@@ -315,7 +325,6 @@ class GraphTrainer:
             cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(num_paragraphs))
         
         if self.use_prev_next_two:
-            
             
             for i in range(num_paragraphs):
                 if i > 0:
@@ -363,7 +372,6 @@ class GraphTrainer:
         import networkx as nx # type: ignore
         from torch_geometric.utils import to_networkx # type: ignore
 
-        print("inside vis")
         G = to_networkx(data, to_undirected=True)
         
         pos = nx.spring_layout(G, seed=42)
@@ -398,24 +406,23 @@ class GraphTrainer:
             if len(batched_graphs) == batch_size or idx == len(points) - 1:
                 batch = Batch.from_data_list(batched_graphs).to(self.device)
                 batched_graphs = []
+                
                 updated_batch = gnn_model(batch)
-
                 start_idx = 0
                 for graph_idx, original_graph in enumerate(batch.to_data_list()):
                     num_nodes = original_graph.x.shape[0]
                     end_idx = start_idx + num_nodes
-
                     updated_encodings = updated_batch.x[start_idx:end_idx]
-                    print(updated_encodings.shape)
+                    num_paragraphs = original_graph.num_paragraphs
+                    paragraph_encodings = updated_encodings[:num_paragraphs]
                     start_idx = end_idx
 
                     datapoint_index = datapoint_map[graph_idx]
-                    points[datapoint_index]["updated_paragraph_encodings"] = updated_encodings
+                    points[datapoint_index]["updated_paragraph_encodings"] = paragraph_encodings
+                    
                     del updated_encodings
                     torch.cuda.empty_cache()
                 datapoint_map = []
-
-
         return points
     
     def _create_individual_datapoints(self, batch):
@@ -432,7 +439,9 @@ class GraphTrainer:
                     pos.append(para)
                 else:
                     neg.append(para)
-            
+            if len(neg) < 7:
+                neg = neg * (7 // len(neg)) + random.sample(neg, 7 % len(neg))
+                
             for para  in pos:
                 # print("para", para.shape)
                 final_datapoints.append(
@@ -444,7 +453,7 @@ class GraphTrainer:
                 )
         return final_datapoints
     
-    def save_model(self, model, path, epoch = None):
+    def save_model(self, model, topic_model, path, epoch = None):
         """Save the model state dictionary to a file.
         
         Args:
@@ -454,11 +463,16 @@ class GraphTrainer:
         
 
         if epoch is not None:
-            path = os.path.join(path, f"epoch_{epoch}", "graph_model.pt")
+            graph_path = os.path.join(path, f"epoch_{epoch}", "graph_model.pt")
+            # topic_path = os.path.join(path, f"epoch_{epoch}", "topic_model") 
         else:
-            path = os.path.join(path, "graph_model.pt")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save(model.state_dict(), path)
+            graph_path = os.path.join(path, "graph_model.pt")
+            # topic_path = os.path.join(path, "topic_model")
+        os.makedirs(os.path.dirname(graph_path), exist_ok=True)
+        # os.makedirs(os.path.dirname(topic_path), exist_ok=True)
+        torch.save(model.state_dict(), graph_path)
+        # topic_model.save(topic_path)
+        # self.topic_model.embedding_model.save(topic_path)
         print(f"Model saved to {path}")
         
     def train(self, use_saved_data=False, processed_data_path="/srv/upadro/embeddings"):
@@ -550,13 +564,14 @@ class GraphTrainer:
                     progress_bar.set_postfix(loss=avg_loss)
                     progress_bar.update(1)
             model_save_dir = f"/srv/upadro/models/graph/new_gat/{self.current_date}___{self.language}_{self.graph_model}_{self.comments}_training/checkpoints"
-            self.save_model(gnn_model, path = model_save_dir, epoch=epoch)
+            topic_model = self.topic_model.embedding_model
+            self.save_model(gnn_model, topic_model=topic_model, path = model_save_dir, epoch=epoch)
             average_loss = total_loss / num_batches
             print(f"Epoch {epoch + 1}/{self.epochs}, Average Loss: {average_loss:.4f}")
         model_save_dir = f"/srv/upadro/models/graph/new_gat/{self.current_date}___{self.language}_{self.graph_model}_{self.comments}_training/_final_model"
-        self.save_model(gnn_model, path = model_save_dir)
+        topic_model = self.topic_model.embedding_model
+        self.save_model(gnn_model, topic_model=topic_model, path = model_save_dir)
         print("Training complete.")
-        pass
     
     def _save_processed_data(self, data, save_path="/srv/upadro/embeddings", file_name="processed_training_data.pkl"):
         save_path = os.path.join(save_path, self.language, file_name)
@@ -590,27 +605,27 @@ if __name__ == "__main__":
             # [
             #     "castorini/mdpr-tied-pft-msmarco",
             #     "castorini/mdpr-tied-pft-msmarco",
-            #     "no_weight_0_shot_use_topics_use_prev_next_two",
+            #     "sentence_transformer_threshold_no_weight_0_shot_use_topics_use_prev_next_two",
             #     {
             #         "use_topics": True,
             #         "use_cosine": False,
             #         "use_prev_next_two": True
             #     }
             # ],
+            # [
+            #     "castorini/mdpr-tied-pft-msmarco",
+            #     "castorini/mdpr-tied-pft-msmarco",
+            #     "no_weight_0_shot_use_cosine_use_prev_next_two",
+            #     {
+            #         "use_topics": False,
+            #         "use_cosine": True,
+            #         "use_prev_next_two": True
+            #     }
+            # ],
             [
                 "castorini/mdpr-tied-pft-msmarco",
                 "castorini/mdpr-tied-pft-msmarco",
-                "no_weight_0_shot_use_cosine_use_prev_next_two",
-                {
-                    "use_topics": False,
-                    "use_cosine": True,
-                    "use_prev_next_two": True
-                }
-            ],
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "no_weight_0_shot_use_topic_cosine_use_prev_next_two",
+                "sentence_transformer_threshold_no_weight_0_shot_use_topic_use_cosine_use_prev_next_two",
                 {
                     "use_topics": True,
                     "use_cosine": True,
@@ -642,11 +657,11 @@ if __name__ == "__main__":
                                 train_data_folder=train_data_folder,
                                 val_data_folder=val_data_folder,
                                 config_file=config_file,
-                                device_str='cuda:3',
+                                device_str='cuda:2',
                                 dual_encoders=dual_encoder,
                                 language=language,
-                                batch_size=2,
-                                epochs=70,
+                                batch_size=4,
+                                epochs=40,
                                 lr=2e-5, #2e-5 or 1e-5 TODO
                                 save_checkpoints=True,
                                 step_validation=False,
@@ -655,7 +670,7 @@ if __name__ == "__main__":
                                 use_translations=use_translation,
                                 graph_model="gat",
                                 comments = model[2],
-                                
+                                use_threshold = True,
                                 # use_bm25=True, 
                                 # use_all=True,
                                 

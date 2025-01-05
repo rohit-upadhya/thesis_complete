@@ -17,14 +17,25 @@ class TopicModeling:
             embeddings = embeddings.cpu().detach().numpy()
             
         vectorizer_model = CountVectorizer(stop_words="english")
+        # min_topic_size = min(len(paragraphs), 10)
         
-        topic_model = BERTopic(
-            vectorizer_model=vectorizer_model,
-            min_topic_size=2,
-            nr_topics=17,
-            calculate_probabilities=True,
-            low_memory=False
-        )
+        if len(paragraphs) < 10:
+            min_topic_size = min(len(paragraphs), 10)
+            topic_model = BERTopic(
+                vectorizer_model=vectorizer_model,
+                min_topic_size=min_topic_size,
+                nr_topics=25,
+                calculate_probabilities=True,
+                low_memory=False
+            )
+        else:
+            topic_model = BERTopic(
+                vectorizer_model=vectorizer_model,
+                # min_topic_size=min_topic_size,
+                nr_topics=25,
+                calculate_probabilities=True,
+                low_memory=False
+            )
         
         
         topic, probabilities = topic_model.fit_transform(paragraphs, embeddings=embeddings)
