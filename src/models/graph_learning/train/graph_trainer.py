@@ -14,7 +14,7 @@ from src.models.single_datapoints.common.utils import current_date
 from src.models.single_datapoints.common.data_loader import InputLoader
 from src.models.graph_learning.encoders.paragraph_gcn import ParagraphGNN
 from src.models.graph_learning.encoders.graph_encoder import GraphEncoder as Encoder
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 class GraphTrainer:
     def __init__(

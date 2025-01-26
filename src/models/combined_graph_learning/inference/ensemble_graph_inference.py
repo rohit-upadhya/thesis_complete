@@ -11,19 +11,17 @@ from torch_geometric.data import Data, Batch # type: ignore
 from rank_bm25 import BM25Okapi # type: ignore
 from joblib import Parallel, delayed # type: ignore
 import heapq
-from sklearn.metrics.pairwise import cosine_similarity # type: ignore
-from time import sleep
 
 from src.models.vector_db.commons.input_loader import InputLoader
 from src.models.vector_db.inference.encoder import Encoder
 from src.models.vector_db.inference.val_encoder import ValEncoder
 from src.models.vector_db.inference.faiss_vector_db import FaissVectorDB
-# from src.models.graph_learning.inference.inference_paragraph_gat import ParagraphGAT
-# from src.models.graph_learning.inference.new_inference_gat import ParagraphGATInference
-from src.models.graph_learning.encoders.paragraph_gat import ParagraphGAT as ParagraphGATInference
-# from src.models.graph_learning.inference.inference_topic_modeling import TopicModeling
+from src.models.combined_graph_learning.encoders.paragraph_gat import ParagraphGAT
+from src.models.combined_graph_learning.encoders.paragraph_gat_mixing import ParagraphGATAllMixing
+from src.models.combined_graph_learning.encoders.paragraph_gat_gated import ParagraphGATGated
+from src.models.combined_graph_learning.encoders.paragraph_gat_gated_all import ParagraphGATAllGating
+from src.models.combined_graph_learning.encoders.graph_creation import GraphCreator
 from src.models.graph_learning.train.new_topic_modeling import TopicModeling
-from src.models.graph_learning.encoders.graph_creation import GraphCreation
 
 class Inference:
     def __init__(
@@ -43,14 +41,9 @@ class Inference:
             device_: Optional[str] = None,
             graph_model: str = '/srv/upadro/models/graph/2024-12-13___all_gat___training/_final_model/graph_model.pt',
             comment: str = 'topic',
-            use_bm25: bool = False,
-            use_topics: bool = False,
-            use_cosine: bool = False,
-            use_prev_next_two: bool = True,
-            use_threshold: bool = False,
+            gat_type:str = "normal",
         ):
-        self.use_topics = use_topics
-        self.use_bm25 = use_bm25
+        self.gat_type = gat_type
         self.use_all = False
         self.input_loader = InputLoader()
         self.file_base_name = language
@@ -59,7 +52,6 @@ class Inference:
         self.recall_file_name = f"recall_{graph_model.replace('/', '_')}_{'translated' if use_translations else 'not_translated'}_{inference_folder.split('/')[-1]}.json" # type: ignore
         self.language = language
         self.save_recall = save_recall
-        self.use_threshold = use_threshold
         if bulk_inference:
             inference_datapoints = self._load_all_input_from_dir(inference_folder)
             self.file_base_name = inference_folder.split("/")[-3] # type: ignore
@@ -69,6 +61,7 @@ class Inference:
             self.encoder = ValEncoder(question_model=model, ctx_model=model, question_tokenizer=tokenizer, ctx_tokenizer=tokenizer, device=device_)
         else:
             self.encoder = Encoder(device=device, question_model_name_or_path=question_model_name_or_path, ctx_model_name_or_path=ctx_model_name_or_path, use_dpr=False, use_roberta=False)
+        self.graph_creator = GraphCreator()
         self.faiss = FaissVectorDB()
         self.comment = comment
         self.graph_model = graph_model
@@ -77,146 +70,26 @@ class Inference:
         self.query_paragraph_mapping = {}
         self.model_trained_language = question_model_name_or_path.split("_")[-4] if "training" in question_model_name_or_path else "base"
         self.topic_model = TopicModeling()
-        self.use_cosine = use_cosine
-        self.use_prev_next_two = use_prev_next_two
-        self.graph_creation = GraphCreation(use_topics=self.use_topics,
-            use_all=False,
-            use_bm25 = self.use_bm25,
-            use_cosine = self.use_cosine,
-            use_prev_next_two = self.use_prev_next_two,
-            topic_model = self.topic_model)
-        print("self.use_topics", self.use_topics)
-        print("self.use_cosine", self.use_cosine)
-        print("self.use_prev_next_two", self.use_prev_next_two)
     
     def _build_graph(self, paragraph_encodings, paragraphs):
-        """
-        Builds a graph with various edge creation strategies:
-        - Fully connected graph (use_all=True)
-        - BM25-based top-k neighbors (use_bm25=True)
-        - Cosine similarity-based top-k neighbors (use_cosine=True)
-        """
-        node_features = paragraph_encodings
-        num_paragraphs = len(paragraph_encodings)
-        edge_index = []
-        topic_embeddings = []
-        if self.use_topics:
-            prob, topic_embeddings = self.topic_model.obtain_topic_embeddings(embeddings=paragraph_encodings, paragraphs=paragraphs)
-            topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
-            node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
-            for i, topic in enumerate(topic_embeddings):
-                for j, paragraph in enumerate(paragraph_encodings):
-                    if self.use_threshold:
-                        # if self.print:
-                        #     print("use_threshold",self.use_threshold)
-                        #     self.print = not self.print
-                        if prob[j][i] > 0.30: 
-                            edge_index.append([i+len(paragraph_encodings), j])
-                            edge_index.append([j, i+len(paragraph_encodings)])
-                    else:
-                        edge_index.append([i+len(paragraph_encodings), j])
-                        edge_index.append([j, i+len(paragraph_encodings)])
-                    
-        if self.use_all:
-            for i in range(num_paragraphs):
-                for j in range(num_paragraphs):
-                    if i != j:
-                        edge_index.append([i, j])
-            edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-            return Data(x=node_features, edge_index=edge_index)
-
         
-        if self.use_bm25:
-            tokenized_corpus = [p.split() for p in paragraphs]
-            bm25 = BM25Okapi(tokenized_corpus)
-            def get_top_nodes_bm25(i):
-                query = tokenized_corpus[i]
-                scores = bm25.get_scores(query)
-                indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-                top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-                return i, top_nodes
-            bm25_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_bm25)(i) for i in range(num_paragraphs))
+        graph1 = self.graph_creator.build_graph(
+            paragraph_encodings=paragraph_encodings,
+            paragraphs=paragraphs,
+            topic_model=None,
+            use_prev_next_five=True,
+        )
         
-        if self.use_cosine:
-            encodings_tensor = torch.tensor(paragraph_encodings, device='cuda', dtype=torch.float32)
-            encodings_norm = encodings_tensor / encodings_tensor.norm(dim=1, keepdim=True)
-            similarity_matrix = torch.matmul(encodings_norm, encodings_norm.T)
-            similarity_matrix = similarity_matrix.cpu().numpy()
-            
-            def get_top_nodes_cosine(i):
-                scores = similarity_matrix[i]
-                indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-                top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-                return i, top_nodes
-            
-            cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(len(paragraph_encodings)))
-        
-        # if self.use_cosine:
-        #     with torch.no_grad():
-        #         encodings_tensor = torch.tensor(paragraph_encodings, device='cuda', dtype=torch.float32)
-        #         encodings_norm = encodings_tensor / encodings_tensor.norm(dim=1, keepdim=True)
+        graph2 = self.graph_creator.build_graph(
+            paragraph_encodings=paragraph_encodings,
+            paragraphs=paragraphs,
+            topic_model=self.topic_model,
+            use_prev_next_five=False,
+            use_topics=True,
+            use_threshold=True,
+        )
 
-        #         similarity_matrix = torch.matmul(encodings_norm, encodings_norm.T)
-
-        #         threshold_mask = similarity_matrix > self.cosine_threshold
-        #         threshold_mask.fill_diagonal_(False)
-                
-        #         matching_indices = torch.nonzero(threshold_mask, as_tuple=False)
-
-        #         from collections import defaultdict
-        #         cosine_results = defaultdict(list)
-        #         for row, col in matching_indices:
-        #             cosine_results[row.item()].append(col.item())
-
-        #         cosine_results = [(i, matches) for i, matches in cosine_results.items()]
-
-
-        
-        if self.use_prev_next_two:
-            
-            for i in range(num_paragraphs):
-                if i > 0:
-                    if [i, i-1] not in edge_index:
-                        edge_index.append([i, i-1])
-                if i > 1:
-                    if [i, i-2] not in edge_index:
-                        edge_index.append([i, i-2])
-                if i < num_paragraphs - 1:
-                    
-                    if [i, i+1] not in edge_index:
-                        edge_index.append([i, i+1])
-                if i < num_paragraphs - 2:
-                    if [i, i+2] not in edge_index:
-                        edge_index.append([i, i+2])
-
-        if self.use_bm25:
-            for i, top_nodes in bm25_results:
-                for item in top_nodes:
-                    if [i, item] not in edge_index:
-                        edge_index.append([i, item])
-
-        if self.use_cosine:
-            for i, top_nodes in cosine_results:
-                for item in top_nodes:
-                    if [i, item] not in edge_index:
-                        edge_index.append([i, item])
-        
-        # if self.use_cosine:
-        #     for i, above_threshold_nodes in cosine_results:
-        #         for item in above_threshold_nodes:
-        #             if [i, item] not in edge_index:
-        #                 edge_index.append([i, item])
-                                    
-        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-        
-        data = Data(x=node_features, edge_index=edge_index)
-        
-        data.num_paragraphs = num_paragraphs
-        if self.use_topics:
-            data.num_topics = len(topic_embeddings)
-        else:
-            data.num_topics = 0
-        return data
+        return (graph1, graph2)
     
     def visualize_graph(self, data, file_name="src/models/graph_learning/train/graph.png"):
         """
@@ -267,7 +140,7 @@ class Inference:
     def _get_graph_encodings(self, gnn_model, encodings, all_paragraphs):
         graph_data = self._build_graph(encodings, paragraphs=all_paragraphs)
         updated_data = gnn_model(graph_data)
-        updated_paragraph_vectors = updated_data.x[:graph_data.num_paragraphs]
+        updated_paragraph_vectors = updated_data
         return updated_paragraph_vectors.detach()
     
     def _load_all_input_from_dir(self, input_data_path):
@@ -316,8 +189,8 @@ class Inference:
             )
         print(self.data_points[0]["query"])
         print(inference_datapoints[0]["query"])
-    
-    
+
+
     def _encode_all_paragraphs(self, gnn_model, batch_size=192, ):
         index_counter = 0
         paragraph_set = set()
@@ -332,7 +205,7 @@ class Inference:
                     for start_idx in range(0, num_paragraphs, batch_size):
                         end_idx = min(start_idx + batch_size, num_paragraphs)
                         batch_paragraphs = all_paragraphs[start_idx:end_idx]
-                        
+
                         encoded_batch = self.encoder.encode_ctx(batch_paragraphs).cpu().numpy()
                         encoded_paragraphs.append(encoded_batch)
                         pbar.update(end_idx - start_idx)
@@ -340,13 +213,13 @@ class Inference:
                     encoded_paragraphs = np.vstack(encoded_paragraphs)
                     encoded_paragraphs = torch.from_numpy(encoded_paragraphs)
                     encoded_paragraphs = self._get_graph_encodings(gnn_model=gnn_model, encodings=encoded_paragraphs, all_paragraphs=points["all_paragraphs"])
-                    
+
                     self.all_paragraph_encodings.append(encoded_paragraphs)
                     self.all_unique_keys.extend(points["unique_keys"])
                     self.query_paragraph_mapping[idx] = list(range(index_counter, index_counter + len(all_paragraphs)))
                     index_counter += len(all_paragraphs)
                     paragraph_set.add(points["link"])
-                    
+
         all_encodings = np.vstack(self.all_paragraph_encodings)
         self.faiss.build_index(all_encodings, self.all_unique_keys)
 
@@ -383,7 +256,14 @@ class Inference:
         Load the trained graph model from a saved state dict.
         """
         if graph_model_type == "gat":
-            model = ParagraphGATInference(hidden_dim=hidden_dim)
+            if self.gat_type == "all_mixing":
+                model = ParagraphGATAllMixing(hidden_dim=hidden_dim)
+            elif self.gat_type == "last_gated":
+                model = ParagraphGATGated(hidden_dim=hidden_dim)
+            elif self.gat_type == 'all_gated':
+                model = ParagraphGATAllGating(hidden_dim=hidden_dim)
+            else:
+                model = ParagraphGAT(hidden_dim=hidden_dim)
         else:
             raise NotImplementedError("Load the appropriate model architecture here.")
 
@@ -393,6 +273,7 @@ class Inference:
         
     def main(self):
         gnn_model = self._load_model(model_path=self.graph_model, hidden_dim=768)
+        print(gnn_model)
         self._encode_all_paragraphs(gnn_model=gnn_model, batch_size=512)
         results = []
         print(self.graph_model)
@@ -419,7 +300,7 @@ class Inference:
         
         recall_data = {}
         if self.save_recall:
-            recall_path = os.path.join('output/inference_outputs/new_splits/new_experiments/graph/',self.comment, self.model_trained_language, self.folder_name, self.recall_file_name)
+            recall_path = os.path.join('output/inference_outputs/new_splits/new_experiments/ensemble/',self.comment, self.model_trained_language, self.folder_name, self.recall_file_name)
             recall_dir = os.path.dirname(recall_path)
             os.makedirs(recall_dir, exist_ok=True)
             if os.path.exists(recall_path):
@@ -463,19 +344,95 @@ if __name__ == "__main__":
             [
                 "castorini/mdpr-tied-pft-msmarco",
                 "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/graph/2025-01-17___all_gat_final_new_graph_expts_no_norm_base_prev_next_2_training/checkpoints/epoch_20/graph_model.pt",
-                "final_new_graph_expts_no_norm_base_prev_next_2",
-                {
-                    "use_topics": False,
-                    "use_cosine": False,
-                    "use_prev_next_two": True,
-                    "use_topic_threshold": False,
-                }
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_0/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_5/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_10/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_15/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_20/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_25/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_30/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_35/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_39/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_2/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
+            ],
+            [
+                "castorini/mdpr-tied-pft-msmarco",
+                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_23/graph_model.pt",
+                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
+                "normal"
             ],
 ]
 
 
-    print(models[0][4])
+
+
+
+
+
+
+
+    
+    
     for model in models:
         for file in files:
             translations  = [
@@ -484,9 +441,9 @@ if __name__ == "__main__":
                 ]
             for use_translations in translations:
                 # languages = ["english", "russian", "french", "italian", "romanian", "turkish", "ukrainian"]
-                languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+                # languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
                 # languages = ["french", "italian", "romanian", "russian", "turkish", "ukrainian"]
-                # languages = ["italian"]
+                languages = ["italian"]
                 for language in tqdm(languages, desc="Processing Languages"):
                     print(f"Processing language: {language}")
                     print(f"translations : {use_translations}")
@@ -499,17 +456,13 @@ if __name__ == "__main__":
                         inference_folder=inference_folder, 
                         bulk_inference=bulk_inference,
                         use_translations=use_translations,
-                        device='cuda:2',
+                        device='cuda:3',
                         language=language,
                         question_model_name_or_path = model[0],
                         ctx_model_name_or_path = model[1],
                         graph_model = model[2],
                         comment=model[3],
-                        use_bm25=False,
-                        use_topics=model[4]["use_topics"],
-                        use_cosine=model[4]["use_cosine"],
-                        use_prev_next_two=model[4]["use_prev_next_two"],
-                        use_threshold = model[4]["use_topic_threshold"],
+                        gat_type=model[4]
                     )
                     inference.main()
                     

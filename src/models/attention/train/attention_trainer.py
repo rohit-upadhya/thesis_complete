@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Optional, Text
+from typing import Text
 import torch # type: ignore
 import os
 import logging
@@ -10,23 +9,13 @@ import torch.optim as optim # type: ignore
 import torch.nn as nn # type: ignore
 import random
 import pickle
-import gc
-from rank_bm25 import BM25Okapi # type: ignore
-from joblib import Parallel, delayed # type: ignore
-import heapq
-from sklearn.metrics.pairwise import cosine_similarity # type: ignore
-import torch.nn.functional as F # type: ignore
 
-from sentence_transformers import SentenceTransformer # type: ignore
 from src.models.single_datapoints.common.utils import current_date
 from src.models.single_datapoints.common.data_loader import InputLoader
-from src.models.graph_learning.encoders.paragraph_gcn import ParagraphGNN
-from src.models.graph_learning.encoders.paragraph_gat import ParagraphGAT
-from src.models.graph_learning.encoders.graph_encoder import GraphEncoder as Encoder
-# from src.models.graph_learning.train.newer_topic_modeling import TopicModeling
-from src.models.graph_learning.train.new_topic_modeling import TopicModeling
+from src.models.attention.encoders.attention_encoder import AttentionEncoder as Encoder
+from src.models.attention.encoders.attention_block import AttentionBlock
 
-class GraphTrainer:
+class AttentionTrainer:
     def __init__(
         self,
         use_dpr=False,
@@ -49,17 +38,9 @@ class GraphTrainer:
         ctx_model_name_or_path="bert-base-multilingual-cased",
         use_translations=False,
         num_negatives=7,
-        graph_model: Text = "gcn",
-        comments = "",
-        use_bm25 = False,
-        use_all=False,
-        use_cosine = False,
-        use_topics = False,
-        use_prev_next_two = True,
-        use_threshold: bool = False,
+        comments=None,
     ):
         self.use_dpr = use_dpr
-        self.use_topics = use_topics
         self.use_roberta = use_roberta
         self.train_data_folder = train_data_folder
         self.val_data_folder = val_data_folder
@@ -79,24 +60,15 @@ class GraphTrainer:
         self.ctx_model_name_or_path = ctx_model_name_or_path
         self.use_translations = use_translations
         self.num_negatives = num_negatives
-        self.graph_model = graph_model
         self.save_model_name = self.query_model_name_or_path.replace('/','_')
         self.current_date = current_date()
         self.input_loader = InputLoader()
         self.comments = comments
-        self.use_bm25 = use_bm25
-        self.use_all = use_all
-        self.use_cosine = use_cosine
-        self.use_prev_next_two = use_prev_next_two
-        self.use_threshold = use_threshold
         if self.config_file == "":
             raise ValueError("config file empty, please contact admin")
-        self.topic_model = TopicModeling()
         self.config = self.input_loader.load_config(self.config_file)  # type: ignore
         self.config = self.config["dual_encoder"] if self.dual_encoders else self.config["single_encoder"] # type: ignore
 
-        self.cosine_threshold = 0.6
-        self.print = True
         self.device = torch.device(
             self.device_str
             if torch.cuda.is_available() and 'cuda' in self.device_str
@@ -116,7 +88,7 @@ class GraphTrainer:
 
         log_file_name = os.path.join(
             "output/model_logs",
-            f"training_graph_{self.language}_{self.encoding_type}_{self.recall_save}_{self.current_date}.log",
+            f"training_attention_{self.language}_{self.encoding_type}_{self.recall_save}_{self.current_date}.log",
         )
         self.setup_logging(log_file_name)
         print("Initialization completed.")
@@ -217,34 +189,6 @@ class GraphTrainer:
         
         return training_datapoints
     
-    def _obtain_pre_graph_datapoints(self, training_datapoints):
-        
-        final_training_datapoints = []
-        print("Building Graph...")
-        for item in tqdm(training_datapoints):
-            query = item["query"]
-            all_paragraphs = item["all_paragraphs"]
-            encoded_paragraphs = item["encoded_paragraphs"].detach().cpu()
-            
-            if "encoded_query" not in item.keys():
-                with torch.no_grad():
-                    encoded_query = self.encoder.encode_question([item["query"]]).squeeze().detach().cpu()
-            else:
-                encoded_query = item["encoded_query"]
-            graph = self._build_graph(encoded_paragraphs, all_paragraphs)
-            final_training_datapoints.append(
-                {
-                    "query": query,
-                    "paragraph_numbers": item.get("paragraph_numbers", []),
-                    "key": item["key"],
-                    "encoded_paragraphs": encoded_paragraphs,
-                    "encoded_query": item.get("encoded_query", encoded_query).detach().cpu(),
-                    "all_paragraphs": all_paragraphs,
-                    "graph": graph,
-                }
-            )
-        return final_training_datapoints
-    
     def _build_single_datapoint(self, final_training_datapoints):
         batches = []
         
@@ -253,229 +197,6 @@ class GraphTrainer:
             batches.append(batch)
         
         return batches
-
-    def _bm25_nodes(self, i, paragraphs):
-        tokenized_corpus = [p.split() for p in paragraphs]
-        bm25 = BM25Okapi(tokenized_corpus)
-        
-        query = paragraphs[i].split()
-        scores = bm25.get_scores(query)
-        
-        indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-        indices_and_scores.sort(key=lambda x: x[1], reverse=True)
-        
-        min_range = min(10, len(paragraphs))
-        top_5 = [idx for idx, _ in indices_and_scores[:min_range]]
-        
-        return top_5
-    
-    
-    def _build_graph(self, paragraph_encodings, paragraphs):
-        """
-        Builds a graph with various edge creation strategies:
-        - Fully connected graph (use_all=True)
-        - BM25-based top-k neighbors (use_bm25=True)
-        - Cosine similarity-based top-k neighbors (use_cosine=True)
-        """
-        node_features = paragraph_encodings
-        num_paragraphs = len(paragraph_encodings)
-        edge_index = []
-        topic_embeddings = []
-        if self.use_topics:
-            prob, topic_embeddings = self.topic_model.obtain_topic_embeddings(embeddings=paragraph_encodings, paragraphs=paragraphs)
-            topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
-            node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
-            for i, topic in enumerate(topic_embeddings):
-                for j, paragraph in enumerate(paragraph_encodings):
-                    if self.use_threshold:
-                        if self.print:
-                            print("use_threshold",self.use_threshold)
-                            self.print = not self.print
-                        if prob[j][i] > 0.30: 
-                            edge_index.append([i+len(paragraph_encodings), j])
-                            edge_index.append([j, i+len(paragraph_encodings)])
-                    else:
-                        edge_index.append([i+len(paragraph_encodings), j])
-                        edge_index.append([j, i+len(paragraph_encodings)])
-                    
-        if self.use_all:
-            for i in range(num_paragraphs):
-                for j in range(num_paragraphs):
-                    if i != j:
-                        edge_index.append([i, j])
-            edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-            return Data(x=node_features, edge_index=edge_index)
-
-        
-        if self.use_bm25:
-            tokenized_corpus = [p.split() for p in paragraphs]
-            bm25 = BM25Okapi(tokenized_corpus)
-            def get_top_nodes_bm25(i):
-                query = tokenized_corpus[i]
-                scores = bm25.get_scores(query)
-                indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-                top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-                return i, top_nodes
-            bm25_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_bm25)(i) for i in range(num_paragraphs))
-        
-        if self.use_cosine:
-            encodings_tensor = torch.tensor(paragraph_encodings, device='cuda', dtype=torch.float32)
-            encodings_norm = encodings_tensor / encodings_tensor.norm(dim=1, keepdim=True)
-            similarity_matrix = torch.matmul(encodings_norm, encodings_norm.T)
-            similarity_matrix = similarity_matrix.cpu().numpy()
-            
-            def get_top_nodes_cosine(i):
-                scores = similarity_matrix[i]
-                indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-                top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
-                return i, top_nodes
-            
-            cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(len(paragraph_encodings)))
-        
-        # if self.use_cosine:
-        #     with torch.no_grad():
-        #         encodings_tensor = torch.tensor(paragraph_encodings, device='cuda', dtype=torch.float32)
-        #         encodings_norm = encodings_tensor / encodings_tensor.norm(dim=1, keepdim=True)
-
-        #         similarity_matrix = torch.matmul(encodings_norm, encodings_norm.T)
-
-        #         threshold_mask = similarity_matrix > self.cosine_threshold
-        #         threshold_mask.fill_diagonal_(False)
-                
-        #         matching_indices = torch.nonzero(threshold_mask, as_tuple=False)
-
-        #         from collections import defaultdict
-        #         cosine_results = defaultdict(list)
-        #         for row, col in matching_indices:
-        #             cosine_results[row.item()].append(col.item())
-
-        #         cosine_results = [(i, matches) for i, matches in cosine_results.items()]
-
-
-        
-        if self.use_prev_next_two:
-            
-            for i in range(num_paragraphs):
-                if i > 0:
-                    if [i, i-1] not in edge_index:
-                        edge_index.append([i, i-1])
-                if i > 1:
-                    if [i, i-2] not in edge_index:
-                        edge_index.append([i, i-2])
-                if i < num_paragraphs - 1:
-                    
-                    if [i, i+1] not in edge_index:
-                        edge_index.append([i, i+1])
-                if i < num_paragraphs - 2:
-                    if [i, i+2] not in edge_index:
-                        edge_index.append([i, i+2])
-
-        if self.use_bm25:
-            for i, top_nodes in bm25_results:
-                for item in top_nodes:
-                    if [i, item] not in edge_index:
-                        edge_index.append([i, item])
-
-        if self.use_cosine:
-            for i, top_nodes in cosine_results:
-                for item in top_nodes:
-                    if [i, item] not in edge_index:
-                        edge_index.append([i, item])
-        
-        # if self.use_cosine:
-        #     for i, above_threshold_nodes in cosine_results:
-        #         for item in above_threshold_nodes:
-        #             if [i, item] not in edge_index:
-        #                 edge_index.append([i, item])
-                                    
-        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-        
-        data = Data(x=node_features, edge_index=edge_index)
-        
-        data.num_paragraphs = num_paragraphs
-        if self.use_topics:
-            data.num_topics = len(topic_embeddings)
-        else:
-            data.num_topics = 0
-        return data
-
-    def visualize_graph(self, data, file_name="src/models/graph_learning/train/graph.png"):
-        """
-        Convert a PyTorch Geometric Data object to a NetworkX graph and visualize it with better separation.
-        """
-        import matplotlib.pyplot as plt # type: ignore
-        import networkx as nx # type: ignore
-        from torch_geometric.utils import to_networkx # type: ignore
-
-        G = to_networkx(data, to_undirected=True)
-        
-        pos = nx.spring_layout(G, seed=42)
-        
-        plt.figure(figsize=(12, 12))
-        nx.draw(
-            G,
-            pos,
-            with_labels=True,
-            node_color='skyblue',
-            edge_color='gray',
-            node_size=800,
-            font_size=8,
-            font_color='black',
-            alpha=0.9
-        )
-        plt.title("Graph Visualization", fontsize=15)
-        plt.savefig(file_name, dpi=300, bbox_inches='tight')
-        plt.show()
-
-        
-    def _get_new_encodings_with_graphs(self, points, gnn_model):
-        """
-        Processes points with a ParagraphGAT model for two graphs and updates paragraph encodings.
-
-        Args:
-            points: List of datapoints, each containing two graphs and their data.
-            gnn_model: ParagraphGAT model to process the graphs.
-
-        Returns:
-            Updated points with new paragraph encodings.
-        """
-        batched_graphs = []
-        datapoint_map = []
-
-        batch_size = len(points)
-        for idx, datapoint in enumerate(points):
-            graph1, graph2 = datapoint["graph"]
-            batched_graphs.append((graph1, graph2))
-            datapoint_map.append(idx)
-
-            if len(batched_graphs) == batch_size or idx == len(points) - 1:
-                batch_1 = Batch.from_data_list([graph[0] for graph in batched_graphs]).to(self.device)
-                batch_2 = Batch.from_data_list([graph[1] for graph in batched_graphs]).to(self.device)
-
-                updated_batch = gnn_model((batch_1, batch_2))
-                batched_graphs = []
-
-                start_idx = 0
-                for graph_idx, (original_graph_1, original_graph_2) in enumerate(zip(batch_1.to_data_list(), batch_2.to_data_list())):
-                    num_nodes_1 = original_graph_1.x.shape[0]
-                    num_nodes_2 = original_graph_2.x.shape[0]
-
-                    end_idx = start_idx + num_nodes_1
-                    updated_encodings = updated_batch[start_idx:end_idx]
-                    num_paragraphs = original_graph_1.num_paragraphs
-                    paragraph_encodings = updated_encodings[:num_paragraphs]
-                    start_idx = end_idx
-
-                    datapoint_index = datapoint_map[graph_idx]
-                    points[datapoint_index]["updated_paragraph_encodings"] = paragraph_encodings
-
-                    del updated_encodings, paragraph_encodings
-                    torch.cuda.empty_cache()
-
-                datapoint_map = []
-
-        return points
-
     
     def _create_individual_datapoints(self, batch):
         
@@ -491,6 +212,7 @@ class GraphTrainer:
                     pos.append(para)
                 else:
                     neg.append(para)
+            random.shuffle(neg)
             if len(neg) < 7:
                 neg = neg * (7 // len(neg)) + random.sample(neg, 7 % len(neg))
                 
@@ -506,31 +228,44 @@ class GraphTrainer:
         return final_datapoints
     
     def save_model(self, model, path, epoch = None):
-        """Save the model state dictionary to a file.
-        
-        Args:
-            model: The PyTorch model to save.
-            epoch: If provided, this is used to create a filename specific to that epoch.
-        """
-        
-
         if epoch is not None:
-            graph_path = os.path.join(path, f"epoch_{epoch}", "graph_model.pt")
-            topic_path = os.path.join(path, f"epoch_{epoch}", "topic_model") 
+            attention_path = os.path.join(path, f"epoch_{epoch}", "attention_model.pt")
         else:
-            graph_path = os.path.join(path, "graph_model.pt")
-            topic_path = os.path.join(path, "topic_model")
-        os.makedirs(os.path.dirname(graph_path), exist_ok=True)
-        os.makedirs(os.path.dirname(topic_path), exist_ok=True)
-        torch.save(model.state_dict(), graph_path)
+            attention_path = os.path.join(path, "attention_model.pt")
+        os.makedirs(os.path.dirname(attention_path), exist_ok=True)
+        torch.save(model.state_dict(), attention_path)
         print(f"Model saved to {path}")
-        
+    
+    def _get_new_encodings_with_attention_block(self, batch, attention_model):
+        max_paragraphs = max(item["encoded_paragraphs"].shape[0] for item in batch)
+
+        batch_tensors = []
+        lengths = []
+
+        for item in batch:
+            parag = item["encoded_paragraphs"]
+            num_parag = parag.size(0)
+            lengths.append(num_parag)
+
+            if num_parag < max_paragraphs:
+                pad_size = max_paragraphs - num_parag
+                pad_zeros = parag.new_zeros((pad_size, parag.shape[1]))
+                parag = torch.cat([parag, pad_zeros], dim=0)
+
+            batch_tensors.append(parag.unsqueeze(0))
+
+        paragraphs_batch = torch.cat(batch_tensors, dim=0).to(self.device)
+
+        updated_embeddings, attn_weights1 = attention_model(paragraphs_batch)
+
+        for i, item in enumerate(batch):
+            length = lengths[i]
+            item["updated_paragraph_encodings"] = updated_embeddings[i, :length]
+
+        return batch
+
     def train(self, use_saved_data=False, processed_data_path="/srv/upadro/embeddings"):
-        use_topics = self.use_topics
-        use_cosine = self.use_cosine
-        use_prev_next_two = self.use_prev_next_two
         
-        print(self.use_topics, self.use_cosine, self.use_prev_next_two)
         path = os.path.join(processed_data_path, self.language, f"processed_encoded_training_data_{self.save_model_name}.pkl")
         
         if os.path.exists(path):
@@ -545,39 +280,32 @@ class GraphTrainer:
             self.training_datapoints = self._encode_all_paragraphs(training_datapoints=self.training_datapoints)
             self._save_processed_data(self.training_datapoints, save_path=processed_data_path, file_name=f"processed_encoded_training_data_{self.save_model_name}.pkl")
         
-        exit()
         
-        self.use_topics, self.use_cosine, self.use_prev_next_two = use_topics, use_cosine, use_prev_next_two
-        print(self.use_topics, self.use_cosine, self.use_prev_next_two)
+        random.shuffle(self.training_datapoints)
         
-        
-        self.final_training_datapoints = self._obtain_pre_graph_datapoints(self.training_datapoints)
-        random.shuffle(self.final_training_datapoints)
-        
-        self.batches = self._build_single_datapoint(self.final_training_datapoints,)
-        del self.final_training_datapoints
+        self.batches = self._build_single_datapoint(self.training_datapoints,)
         del self.training_datapoints
         torch.cuda.empty_cache()
         num_batches = len(self.batches)
         self._remove_encoder()
         hidden_dim = self.batches[0][0]["encoded_paragraphs"].shape[1]
-        graph = self.batches[0][0]["graph"]
-        self.visualize_graph(data=graph)
-        gnn_model = ParagraphGNN(hidden_dim=hidden_dim, num_layers=3) if self.graph_model == "gcn" else ParagraphGAT(hidden_dim=hidden_dim)
-        gnn_model.to(self.device)
-        print(gnn_model)
-        optimizer = optim.AdamW(gnn_model.parameters(), lr=self.lr)
+        # graph = self.batches[0][0]["graph"]
+        # self.visualize_graph(data=graph)
+        attention_model = AttentionBlock(embedding_dim=hidden_dim)
+        attention_model.to(self.device)
+        print(attention_model)
+        optimizer = optim.AdamW(attention_model.parameters(), lr=self.lr)
         criterion = nn.CrossEntropyLoss()
-        print("Number of unusable datapoints", self.topic_model.count)
         for epoch in tqdm(range(self.epochs)):
             random.shuffle(self.batches)
-            gnn_model.train()
+            attention_model.train()
             total_loss = 0.0
-            gnn_model.unusable = 0
+            
             with tqdm(total=num_batches, desc=f"Training Epoch {epoch+1}", unit="batch") as progress_bar:
                 for i, batch in enumerate(self.batches):
-                    batch = self._get_new_encodings_with_graphs(points=batch, gnn_model=gnn_model)
+                    batch = self._get_new_encodings_with_attention_block(batch=batch, attention_model=attention_model)
                     batch = self._create_individual_datapoints(batch=batch)
+                    
                     
                     query_tensors = []
                     positive_tensors = []
@@ -612,13 +340,12 @@ class GraphTrainer:
                     
                     progress_bar.set_postfix(loss=avg_loss)
                     progress_bar.update(1)
-            model_save_dir = f"/srv/upadro/models/new_expt/graph/{self.current_date}___{self.language}_{self.graph_model}_{self.comments}_training/checkpoints"
-            self.save_model(gnn_model, path = model_save_dir, epoch=epoch)
+            model_save_dir = f"/srv/upadro/models/new_expt/attention/{self.current_date}___{self.language}_{self.comments}_training/checkpoints"
+            self.save_model(attention_model, path = model_save_dir, epoch=epoch)
             average_loss = total_loss / num_batches
             print(f"Epoch {epoch + 1}/{self.epochs}, Average Loss: {average_loss:.4f}")
-            print(f"unusable datapoints for epoch : {gnn_model.unusable}")
-        model_save_dir = f"/srv/upadro/models/new_expt/graph/{self.current_date}___{self.language}_{self.graph_model}_{self.comments}_training/_final_model"
-        self.save_model(gnn_model, path = model_save_dir)
+        model_save_dir = f"/srv/upadro/models/new_expt/attention/{self.current_date}___{self.language}_{self.comments}_training/_final_model"
+        self.save_model(attention_model, path = model_save_dir)
         print("Training complete.")
     
     def _save_processed_data(self, data, save_path="/srv/upadro/embeddings", file_name="processed_training_data.pkl"):
@@ -645,10 +372,7 @@ class GraphTrainer:
 if __name__ == "__main__":
     # languages = ["russian", "english", "french", "italian", "romanian", "turkish", "ukrainian"]
     # languages = ["russian", "french", "italian", "romanian", "turkish", "ukrainian"]
-    # languages = ["all"]
-                 
-    # languages = ["italian"]
-    languages = ["turkish",]
+    languages = ["all"]
     for language in languages:
         # dual_encoders = [False, True]
         dual_encoders = [True]
@@ -656,15 +380,13 @@ if __name__ == "__main__":
             [
                 "castorini/mdpr-tied-pft-msmarco",
                 "castorini/mdpr-tied-pft-msmarco",
-                "final_new_graph_expts_no_norm_base_prev_next_2_topics_bipartite",
-                {
-                    "use_topics": True,
-                    "use_cosine": False,
-                    "use_prev_next_two": True,
-                    "use_topic_threshold": False,
-                }
+                "new_attention_expts_pos_just_1_ff_base",
             ],
-            
+            [
+                "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
+                "new_attention_expts_pos_just_1_ff_ours",
+            ],
         ]
         train_data_folder = f'input/train_infer/{language}/new_split/train_test_val'
         val_data_folder = f'input/train_infer/{language}/new_split/val'
@@ -683,13 +405,13 @@ if __name__ == "__main__":
                         # try:
                             config_file = "src/models/vector_db/commons/config.yaml"
                             language = train_data_folder.split('/')[-3] 
-                            trainer = GraphTrainer(
+                            trainer = AttentionTrainer(
                                 use_dpr=False,
                                 use_roberta=False,
                                 train_data_folder=train_data_folder,
                                 val_data_folder=val_data_folder,
                                 config_file=config_file,
-                                device_str='cuda:2',
+                                device_str='cuda:0',
                                 dual_encoders=dual_encoder,
                                 language=language,
                                 batch_size=4,
@@ -700,15 +422,7 @@ if __name__ == "__main__":
                                 query_model_name_or_path=model[0],
                                 ctx_model_name_or_path=model[1],
                                 use_translations=use_translation,
-                                graph_model="gat",
                                 comments = model[2],
-                                use_threshold = model[3]["use_topic_threshold"],
-                                # use_bm25=True, 
-                                # use_all=True,
-                                
-                                use_prev_next_two=model[3]["use_prev_next_two"],
-                                use_cosine=model[3]["use_cosine"],
-                                use_topics=model[3]["use_topics"],
                             )
                             trainer.train()
         print("done")

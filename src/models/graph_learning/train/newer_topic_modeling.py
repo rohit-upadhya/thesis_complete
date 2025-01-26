@@ -17,11 +17,11 @@ class TopicModeling:
         if embedding_model:
             self.embedding_model = embedding_model
         else:
-            self.embedding_model = SentenceTransformer("all-mpnet-base-v2")
+            self.embedding_model = SentenceTransformer("/srv/upadro/models/graph/new_gat/2025-01-05___all_gat_train_sentence_transformer_threshold_no_weight_0_shot_use_topics_use_prev_next_two_training/checkpoints/epoch_0/topic_model")
 
     def obtain_topic_embeddings(self, paragraphs: List[str]) -> Tuple[np.ndarray, np.ndarray]:
         paragraphs_clean = [clean_text(p) for p in paragraphs]
-        # Model is not in eval mode and no torch.no_grad(), so it can be further trained if desired
+        
         with torch.no_grad():
             embeddings = self.embedding_model.encode(paragraphs_clean, show_progress_bar=False)
         if not isinstance(embeddings, np.ndarray):

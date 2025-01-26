@@ -12,7 +12,6 @@ from rank_bm25 import BM25Okapi # type: ignore
 from joblib import Parallel, delayed # type: ignore
 import heapq
 from sklearn.metrics.pairwise import cosine_similarity # type: ignore
-from time import sleep
 
 from src.models.vector_db.commons.input_loader import InputLoader
 from src.models.vector_db.inference.encoder import Encoder
@@ -46,7 +45,7 @@ class Inference:
             use_bm25: bool = False,
             use_topics: bool = False,
             use_cosine: bool = False,
-            use_prev_next_two: bool = True,
+            use_prev_next_five: bool = True,
             use_threshold: bool = False,
         ):
         self.use_topics = use_topics
@@ -78,16 +77,16 @@ class Inference:
         self.model_trained_language = question_model_name_or_path.split("_")[-4] if "training" in question_model_name_or_path else "base"
         self.topic_model = TopicModeling()
         self.use_cosine = use_cosine
-        self.use_prev_next_two = use_prev_next_two
-        self.graph_creation = GraphCreation(use_topics=self.use_topics,
-            use_all=False,
-            use_bm25 = self.use_bm25,
-            use_cosine = self.use_cosine,
-            use_prev_next_two = self.use_prev_next_two,
-            topic_model = self.topic_model)
+        self.use_prev_next_five = use_prev_next_five
+        # self.graph_creation = GraphCreation(use_topics=self.use_topics,
+        #     use_all=False,
+        #     use_bm25 = self.use_bm25,
+        #     use_cosine = self.use_cosine,
+        #     use_prev_next_five = self.use_prev_next_five,
+        #     topic_model = self.topic_model)
         print("self.use_topics", self.use_topics)
         print("self.use_cosine", self.use_cosine)
-        print("self.use_prev_next_two", self.use_prev_next_two)
+        print("self.use_prev_next_five", self.use_prev_next_five)
     
     def _build_graph(self, paragraph_encodings, paragraphs):
         """
@@ -102,15 +101,13 @@ class Inference:
         topic_embeddings = []
         if self.use_topics:
             prob, topic_embeddings = self.topic_model.obtain_topic_embeddings(embeddings=paragraph_encodings, paragraphs=paragraphs)
+            # prob, topic_embeddings = self.topic_model.obtain_topic_embeddings(paragraphs=paragraphs)
             topics_tensor = torch.tensor(topic_embeddings, dtype=paragraph_encodings.dtype, device=paragraph_encodings.device)
             node_features = torch.cat((paragraph_encodings, topics_tensor), dim=0)
             for i, topic in enumerate(topic_embeddings):
                 for j, paragraph in enumerate(paragraph_encodings):
                     if self.use_threshold:
-                        # if self.print:
-                        #     print("use_threshold",self.use_threshold)
-                        #     self.print = not self.print
-                        if prob[j][i] > 0.30: 
+                        if prob[j][i] > 0.25: 
                             edge_index.append([i+len(paragraph_encodings), j])
                             edge_index.append([j, i+len(paragraph_encodings)])
                     else:
@@ -138,42 +135,16 @@ class Inference:
             bm25_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_bm25)(i) for i in range(num_paragraphs))
         
         if self.use_cosine:
-            encodings_tensor = torch.tensor(paragraph_encodings, device='cuda', dtype=torch.float32)
-            encodings_norm = encodings_tensor / encodings_tensor.norm(dim=1, keepdim=True)
-            similarity_matrix = torch.matmul(encodings_norm, encodings_norm.T)
-            similarity_matrix = similarity_matrix.cpu().numpy()
-            
+            similarity_matrix = cosine_similarity(paragraph_encodings, paragraph_encodings)
             def get_top_nodes_cosine(i):
                 scores = similarity_matrix[i]
                 indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
                 top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
                 return i, top_nodes
             
-            cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(len(paragraph_encodings)))
+            cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(num_paragraphs))
         
-        # if self.use_cosine:
-        #     with torch.no_grad():
-        #         encodings_tensor = torch.tensor(paragraph_encodings, device='cuda', dtype=torch.float32)
-        #         encodings_norm = encodings_tensor / encodings_tensor.norm(dim=1, keepdim=True)
-
-        #         similarity_matrix = torch.matmul(encodings_norm, encodings_norm.T)
-
-        #         threshold_mask = similarity_matrix > self.cosine_threshold
-        #         threshold_mask.fill_diagonal_(False)
-                
-        #         matching_indices = torch.nonzero(threshold_mask, as_tuple=False)
-
-        #         from collections import defaultdict
-        #         cosine_results = defaultdict(list)
-        #         for row, col in matching_indices:
-        #             cosine_results[row.item()].append(col.item())
-
-        #         cosine_results = [(i, matches) for i, matches in cosine_results.items()]
-
-
-        
-        if self.use_prev_next_two:
-            
+        if self.use_prev_next_five:
             for i in range(num_paragraphs):
                 if i > 0:
                     if [i, i-1] not in edge_index:
@@ -181,13 +152,30 @@ class Inference:
                 if i > 1:
                     if [i, i-2] not in edge_index:
                         edge_index.append([i, i-2])
+                if i > 2:
+                    if [i, i-3] not in edge_index:
+                        edge_index.append([i, i-3])
+                if i > 3:
+                    if [i, i-4] not in edge_index:
+                        edge_index.append([i, i-4])
+                if i > 4:
+                    if [i, i-5] not in edge_index:
+                        edge_index.append([i, i-5])
                 if i < num_paragraphs - 1:
-                    
                     if [i, i+1] not in edge_index:
                         edge_index.append([i, i+1])
                 if i < num_paragraphs - 2:
                     if [i, i+2] not in edge_index:
                         edge_index.append([i, i+2])
+                if i < num_paragraphs - 3:
+                    if [i, i+3] not in edge_index:
+                        edge_index.append([i, i+3])
+                if i < num_paragraphs - 4:
+                    if [i, i+4] not in edge_index:
+                        edge_index.append([i, i+4])
+                if i < num_paragraphs - 5:
+                    if [i, i+5] not in edge_index:
+                        edge_index.append([i, i+5])
 
         if self.use_bm25:
             for i, top_nodes in bm25_results:
@@ -200,12 +188,6 @@ class Inference:
                 for item in top_nodes:
                     if [i, item] not in edge_index:
                         edge_index.append([i, item])
-        
-        # if self.use_cosine:
-        #     for i, above_threshold_nodes in cosine_results:
-        #         for item in above_threshold_nodes:
-        #             if [i, item] not in edge_index:
-        #                 edge_index.append([i, item])
                                     
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         
@@ -463,18 +445,28 @@ if __name__ == "__main__":
             [
                 "castorini/mdpr-tied-pft-msmarco",
                 "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/graph/2025-01-17___all_gat_final_new_graph_expts_no_norm_base_prev_next_2_training/checkpoints/epoch_20/graph_model.pt",
-                "final_new_graph_expts_no_norm_base_prev_next_2",
+                "/srv/upadro/models/new_expt/graph/2025-01-15___all_gat_new_graph_expts_no_norm_base_next_5_training/checkpoints/epoch_25/graph_model.pt",
+                "new_graph_expts_no_norm_base_next_5",
                 {
                     "use_topics": False,
                     "use_cosine": False,
-                    "use_prev_next_two": True,
-                    "use_topic_threshold": False,
+                    "use_prev_next_five": True
                 }
             ],
+            
+            
 ]
 
 
+
+
+
+
+
+
+
+    
+    
     print(models[0][4])
     for model in models:
         for file in files:
@@ -499,7 +491,7 @@ if __name__ == "__main__":
                         inference_folder=inference_folder, 
                         bulk_inference=bulk_inference,
                         use_translations=use_translations,
-                        device='cuda:2',
+                        device='cuda:3',
                         language=language,
                         question_model_name_or_path = model[0],
                         ctx_model_name_or_path = model[1],
@@ -508,13 +500,11 @@ if __name__ == "__main__":
                         use_bm25=False,
                         use_topics=model[4]["use_topics"],
                         use_cosine=model[4]["use_cosine"],
-                        use_prev_next_two=model[4]["use_prev_next_two"],
-                        use_threshold = model[4]["use_topic_threshold"],
+                        use_prev_next_five=model[4]["use_prev_next_five"],
+                        use_threshold=False,
                     )
                     inference.main()
                     
                     print(f"Completed processing for language: {language}")
                     print("*" * 40)
-                    
                 print(f"Inference process completed for all languages for {'translated' if use_translations else 'not translated'} for model {model} for {file} datapoints")
-    # sleep(180)

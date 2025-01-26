@@ -5,6 +5,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 
 class TopicModeling:
     def __init__(self) -> None:
+        self.count = 0
         pass
 
     def obtain_topic_embeddings(
@@ -17,37 +18,29 @@ class TopicModeling:
             embeddings = embeddings.cpu().detach().numpy()
             
         vectorizer_model = CountVectorizer(stop_words="english")
-        # min_topic_size = min(len(paragraphs), 10)
         
-        if len(paragraphs) < 10:
-            min_topic_size = min(len(paragraphs), 10)
-            topic_model = BERTopic(
-                vectorizer_model=vectorizer_model,
-                min_topic_size=min_topic_size,
-                nr_topics=25,
-                calculate_probabilities=True,
-                low_memory=False
-            )
-        else:
-            topic_model = BERTopic(
-                vectorizer_model=vectorizer_model,
-                # min_topic_size=min_topic_size,
-                nr_topics=25,
-                calculate_probabilities=True,
-                low_memory=False
-            )
+        # if len(paragraphs) < 10:
+        min_topic_size = min(len(paragraphs), 4)
+        topic_model = BERTopic(
+            vectorizer_model=vectorizer_model,
+            min_topic_size=min_topic_size,
+            nr_topics=25,
+            calculate_probabilities=True,
+            low_memory=False
+        )
+        # else:
+        #     topic_model = BERTopic(
+        #         vectorizer_model=vectorizer_model,
+        #         nr_topics=25,
+        #         calculate_probabilities=True,
+        #         low_memory=False
+        #     )
         
         
         topic, probabilities = topic_model.fit_transform(paragraphs, embeddings=embeddings)
         topic_embeddings = topic_model.topic_embeddings_[1:]
-        
-        # if probabilities is None or probabilities.ndim == 1 or probabilities.size == 0:
-        #     probabilities = np.ones((len(paragraphs), 1))
-        #     topic_embeddings = topic_embeddings[:1]
-        
-        # else:
-        #     noise_probabilities = 1 - probabilities.sum(axis=1, keepdims=True)
-        #     probabilities = np.hstack([noise_probabilities, probabilities])
-        
-        
+        if len(topic_embeddings) == 0:
+            self.count += 1
         return probabilities, topic_embeddings
+        # print("zero noticed")
+        # return np.expand_dims(np.ones(len(paragraphs)), axis=1), topic_model.topic_embeddings_

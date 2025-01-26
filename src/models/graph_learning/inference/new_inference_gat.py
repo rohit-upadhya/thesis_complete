@@ -9,8 +9,8 @@ class ParagraphGATInference(nn.Module):
         self.norm1 = LayerNorm(hidden_dim)
         self.conv2 = GATv2Conv(hidden_dim, hidden_dim, heads=heads, concat=False)
         self.norm2 = LayerNorm(hidden_dim)
-        self.conv3 = GATv2Conv(hidden_dim, hidden_dim, heads=final_heads, concat=False)
-        self.norm3 = LayerNorm(hidden_dim)
+        # self.conv3 = GATv2Conv(hidden_dim, hidden_dim, heads=final_heads, concat=False)
+        # self.norm3 = LayerNorm(hidden_dim)
 
         self.activation = nn.ReLU()
 
@@ -27,12 +27,13 @@ class ParagraphGATInference(nn.Module):
         x = self.conv2(x, edge_index)
         x = self.norm2(x)
         x = x + x_residual
-        x = self.activation(x)
+        
+        # x = self.activation(x)
 
-        x_residual = x
-        x = self.conv3(x, edge_index)
-        x = self.norm3(x)
-        x = x + x_residual
+        # x_residual = x
+        # x = self.conv3(x, edge_index)
+        # x = self.norm3(x)
+        # x = x + x_residual
 
         data.x = x
         return data
