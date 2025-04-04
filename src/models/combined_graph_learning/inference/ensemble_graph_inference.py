@@ -314,7 +314,7 @@ class Inference:
         return recall
 
 if __name__ == "__main__":
-    # languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+    # languages = ["english", "french", "italian", "romanian", "russian", "turkish", "english"]
     # languages = ["russian"]
     # file = "val"
     
@@ -336,102 +336,68 @@ if __name__ == "__main__":
     # ]
     
     files = [
-            'unique_query', 
+            # 'unique_query', 
             'test'
         ]
     # files = ['test']
     models = [
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_0/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_5/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_10/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_15/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_20/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_25/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_30/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_35/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_39/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_2/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-            [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "/srv/upadro/models/new_expt/ensemble/language/2025-01-23___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_training/checkpoints/epoch_23/graph_model.pt",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold_russian",
-                "normal"
-            ],
-]
+                # [
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
+                #     "/srv/upadro/models/new_expt/ensemble/language/2025-01-31___russian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_russian_training/checkpoints/epoch_25/graph_model.pt",
+                #     f"new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_russian",
+                #     "normal"
+                # ],
+                [
+                    "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                    "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
+                    "/srv/upadro/models/new_expt/ensemble/language/2025-02-01___english_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_english_training/checkpoints/epoch_25/graph_model.pt",
+                    f"new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_english",
+                    "normal"
+                ],
+                
+                # [
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
+                #     "/srv/upadro/models/new_expt/ensemble/language/2025-02-01___french_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_french_training/checkpoints/epoch_20/graph_model.pt",
+                #     f"new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_french",
+                #     "normal"
+                # ],
+                
+                # [
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
+                #     "/srv/upadro/models/new_expt/ensemble/language/2025-02-01___italian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_italian_training/checkpoints/epoch_20/graph_model.pt",
+                #     f"new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_italian",
+                #     "normal"
+                # ],
+                
+                # [
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
+                #     "/srv/upadro/models/new_expt/ensemble/language/2025-02-01___romanian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_romanian_training/checkpoints/epoch_20/graph_model.pt",
+                #     f"new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_romanian",
+                #     "normal"
+                # ],
+                
+                # [
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
+                #     "/srv/upadro/models/new_expt/ensemble/language/2025-02-01___turkish_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_turkish_training/checkpoints/epoch_20/graph_model.pt",
+                #     f"new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_turkish",
+                #     "normal"
+                # ],
+                
+                # [
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                #     "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
+                #     "/srv/upadro/models/new_expt/ensemble/language/2025-02-01___ukrainian_gat_new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_ukrainian_training/checkpoints/epoch_20/graph_model.pt",
+                #     f"new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_ukrainian",
+                #     "normal"
+                # ],
+                
+            ]
 
-
-
-
-
-
-
-
-
-    
     
     for model in models:
         for file in files:
@@ -441,13 +407,14 @@ if __name__ == "__main__":
                 ]
             for use_translations in translations:
                 # languages = ["english", "russian", "french", "italian", "romanian", "turkish", "ukrainian"]
-                # languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
+                languages = ["english", "french", "italian", "romanian", "russian", "turkish", "ukrainian"]
                 # languages = ["french", "italian", "romanian", "russian", "turkish", "ukrainian"]
-                languages = ["italian"]
+                # languages = ["italian"]
                 for language in tqdm(languages, desc="Processing Languages"):
                     print(f"Processing language: {language}")
                     print(f"translations : {use_translations}")
-                    
+                    print(f"model : {model[2]}")
+                    print(f"comment : {model[3]}")
                     inference_folder = f"input/train_infer/{language}/new_split/{file}"
                     bulk_inference = True
                     # use_translations = False

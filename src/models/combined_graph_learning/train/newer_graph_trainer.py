@@ -12,14 +12,12 @@ import random
 import pickle
 
 from sentence_transformers import SentenceTransformer # type: ignore
-from src.models.single_datapoints.common.utils import current_date
 from src.models.combined_graph_learning.encoders.paragraph_gat import ParagraphGAT
 from src.models.combined_graph_learning.encoders.paragraph_gat_mixing import ParagraphGATAllMixing
 from src.models.combined_graph_learning.encoders.paragraph_gat_gated import ParagraphGATGated
 from src.models.combined_graph_learning.encoders.paragraph_gat_gated_all import ParagraphGATAllGating
 from src.models.combined_graph_learning.encoders.graph_creation import GraphCreator
 from src.models.graph_learning.encoders.graph_encoder import GraphEncoder as Encoder
-# from src.models.graph_learning.train.newer_topic_modeling import TopicModeling
 from src.models.graph_learning.train.new_topic_modeling import TopicModeling
 
 
@@ -294,6 +292,8 @@ class GraphTrainer:
         criterion = nn.CrossEntropyLoss()
         print("Number of unusable datapoints", self.topic_model.count)
         
+        accumulation_steps = 1
+        
         for epoch in tqdm(range(self.epochs)):
             random.shuffle(self.batches)
             gnn_model.train()
@@ -326,10 +326,14 @@ class GraphTrainer:
                     
                     logits = similarity_scores
                     labels = torch.zeros(logits.size(0), dtype=torch.long, device=self.device)
-                    optimizer.zero_grad()
+                    # optimizer.zero_grad()
                     loss = criterion(logits, labels)
                     loss.backward()
+                    
+                    # if (i + 1) % accumulation_steps == 0 or (i + 1) == len(self.batches):  
                     optimizer.step()
+                    optimizer.zero_grad()
+                    # optimizer.step()
                     
                     loss_val = loss.item()
                     total_loss += loss_val
@@ -378,19 +382,21 @@ class GraphTrainer:
         print(f"Model saved to {path}")
 
 if __name__ == "__main__":
-    languages = ["russian", "ukrainian", "romanian", "french", "turkish", "italian", "english"]
-    # languages = ["russian", "english", "french", "italian"]
-    # languages = ["romanian", "turkish", "ukrainian"]
-    # languages = ["russian", "french", "italian", "romanian", "turkish", "ukrainian"]
-    # languages = ["all"]
+    # languages = ["russian", "ukrainian", "romanian", "french", "turkish", "italian", "english"]
+    # languages = ["french", "ukrainian"]
+    # languages = ["russian", "italian"]
+    # languages = ["romanian", "turkish"]
+    # languages = ["english"]
+    languages = ["romanian", "french", "turkish", "english"]
+    # languages = ["test"]
     for language in languages:
         # dual_encoders = [False, True]
         dual_encoders = [True]
         models = [
             [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
-                "new_gat_ablation_last_mixing_next_5_topic_threshold",
+                "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
+                f"new_gat_ablation_last_mixing_next_5_topic_threshold_fine_tuned_{language}",
                 "normal"
             ],
         ]
@@ -421,7 +427,7 @@ if __name__ == "__main__":
                                 dual_encoders=dual_encoder,
                                 language=language,
                                 batch_size=1,
-                                epochs=40,
+                                epochs=30,
                                 lr=2e-5, #2e-5 or 1e-5 TODO
                                 save_checkpoints=True,
                                 step_validation=False,

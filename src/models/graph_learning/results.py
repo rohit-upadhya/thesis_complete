@@ -64,7 +64,7 @@ def extract_epoch_from_filename(filename):
     return None
 
 if __name__ == "__main__":
-    input_data_path = "output/inference_outputs/new_splits/new_experiments/ensemble/new_gat_ablation_last_mixing_next_5_topic_threshold_english/base/unique_query"
+    input_data_path = "output/inference_outputs/new_splits/new_experiments/ensemble/new_gat_ablation_last_mixing_next_5_topic_threshold_english/base/test"
     files = []
     for (dirpath, dirnames, filenames) in os.walk(input_data_path):
         for filename in filenames:

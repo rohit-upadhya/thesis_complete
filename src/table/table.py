@@ -31,7 +31,6 @@ if __name__ == "__main__":
                     'train_pairs', 'test_pairs', 'val_pairs']
     df = df[column_order]
 
-    # Create the MultiIndex
     df.columns = pd.MultiIndex.from_tuples([
         ('unique_query_test', 'QDR Triplets'),
         ('unique_query_test', 'Queries'),

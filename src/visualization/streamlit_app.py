@@ -300,12 +300,12 @@ if page == "Main":
         width = 0.35
 
         fig6, ax6 = plt.subplots(figsize=(10, 6))
-        bars1 = ax6.bar(x - width/2, q_d_pairs, width, label='Query-Doc Pairs')
+        bars1 = ax6.bar(x - width/2, q_d_pairs, width, label='Query-Judgement Pairs')
         bars2 = ax6.bar(x + width/2, unique_queries, width, label='Unique Queries')
 
         ax6.set_xlabel('Languages')
         ax6.set_ylabel('Count')
-        ax6.set_title('Query-Doc Pairs and Unique Queries by Language')
+        # ax6.set_title('Query-Judgement Pairs and Unique Queries by Language')
         ax6.set_xticks(x)
         ax6.set_xticklabels(labels)
         ax6.legend()

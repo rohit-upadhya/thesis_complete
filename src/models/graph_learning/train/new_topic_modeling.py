@@ -20,7 +20,7 @@ class TopicModeling:
         vectorizer_model = CountVectorizer(stop_words="english")
         
         # if len(paragraphs) < 10:
-        min_topic_size = min(len(paragraphs), 4)
+        min_topic_size = min(len(paragraphs), 2)
         topic_model = BERTopic(
             vectorizer_model=vectorizer_model,
             min_topic_size=min_topic_size,

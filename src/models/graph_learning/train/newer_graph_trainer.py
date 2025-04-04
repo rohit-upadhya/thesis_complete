@@ -18,8 +18,8 @@ from sklearn.metrics.pairwise import cosine_similarity # type: ignore
 import torch.nn.functional as F # type: ignore
 
 from sentence_transformers import SentenceTransformer # type: ignore
-from src.models.single_datapoints.common.utils import current_date
-from src.models.single_datapoints.common.data_loader import InputLoader
+from src.models.graph_learning.common.utils import current_date
+from src.models.graph_learning.common.data_loader import InputLoader
 from src.models.graph_learning.encoders.paragraph_gcn import ParagraphGNN
 from src.models.graph_learning.encoders.paragraph_gat import ParagraphGAT
 from src.models.graph_learning.encoders.graph_encoder import GraphEncoder as Encoder
@@ -188,7 +188,7 @@ class GraphTrainer:
             )
         return training_data_points
 
-    def _encode_all_paragraphs(self, training_datapoints, batch_size=256):
+    def _encode_all_paragraphs(self, training_datapoints, batch_size=512):
         index_counter = 0
         total_paragraphs = sum(len(points["all_paragraphs"]) for points in training_datapoints)
         with tqdm(total=total_paragraphs, desc="Encoding paragraphs", unit="paragraph") as pbar:
@@ -327,7 +327,7 @@ class GraphTrainer:
             def get_top_nodes_cosine(i):
                 scores = similarity_matrix[i]
                 indices_and_scores = [(idx, score) for idx, score in enumerate(scores) if idx != i]
-                top_nodes = [idx for idx, _ in heapq.nlargest(10, indices_and_scores, key=lambda x: x[1])]
+                top_nodes = [idx for idx, _ in heapq.nlargest(3, indices_and_scores, key=lambda x: x[1])]
                 return i, top_nodes
             
             cosine_results = Parallel(n_jobs=-1)(delayed(get_top_nodes_cosine)(i) for i in range(len(paragraph_encodings)))
@@ -399,7 +399,7 @@ class GraphTrainer:
             data.num_topics = 0
         return data
 
-    def visualize_graph(self, data, file_name="src/models/graph_learning/train/graph.png"):
+    def visualize_graph(self, data, folder_name="src/models/graph_learning/train"):
         """
         Convert a PyTorch Geometric Data object to a NetworkX graph and visualize it with better separation.
         """
@@ -409,7 +409,7 @@ class GraphTrainer:
 
         G = to_networkx(data, to_undirected=True)
         
-        pos = nx.spring_layout(G, seed=42)
+        pos = nx.spring_layout(G, k=1.5, iterations=500)
         
         plt.figure(figsize=(12, 12))
         nx.draw(
@@ -424,7 +424,9 @@ class GraphTrainer:
             alpha=0.9
         )
         plt.title("Graph Visualization", fontsize=15)
-        plt.savefig(file_name, dpi=300, bbox_inches='tight')
+        file_name = "cosine" if self.use_cosine else ("neighbour" if self.use_prev_next_two else ("topic_threshold" if (self.use_topics and self.use_threshold) else "topic_bipartite"))
+        file_name = f"{file_name}.png"
+        plt.savefig(os.path.join(folder_name, file_name), dpi=300, bbox_inches='tight')
         plt.show()
 
         
@@ -545,7 +547,6 @@ class GraphTrainer:
             self.training_datapoints = self._encode_all_paragraphs(training_datapoints=self.training_datapoints)
             self._save_processed_data(self.training_datapoints, save_path=processed_data_path, file_name=f"processed_encoded_training_data_{self.save_model_name}.pkl")
         
-        exit()
         
         self.use_topics, self.use_cosine, self.use_prev_next_two = use_topics, use_cosine, use_prev_next_two
         print(self.use_topics, self.use_cosine, self.use_prev_next_two)
@@ -562,7 +563,9 @@ class GraphTrainer:
         self._remove_encoder()
         hidden_dim = self.batches[0][0]["encoded_paragraphs"].shape[1]
         graph = self.batches[0][0]["graph"]
-        self.visualize_graph(data=graph)
+        self.visualize_graph(data=graph, )
+        
+        exit()
         gnn_model = ParagraphGNN(hidden_dim=hidden_dim, num_layers=3) if self.graph_model == "gcn" else ParagraphGAT(hidden_dim=hidden_dim)
         gnn_model.to(self.device)
         print(gnn_model)
@@ -647,21 +650,27 @@ if __name__ == "__main__":
     # languages = ["russian", "french", "italian", "romanian", "turkish", "ukrainian"]
     # languages = ["all"]
                  
+    # languages = ["test"]
+    # languages = ["romanian"]
     # languages = ["italian"]
-    languages = ["turkish",]
+    # languages = ["turkish"]
+    # languages = ["russian"]
+    # languages = ["ukrainian"] 
+    # languages = ["english"]
+    languages = ["test"]
     for language in languages:
         # dual_encoders = [False, True]
         dual_encoders = [True]
         models = [
             [
-                "castorini/mdpr-tied-pft-msmarco",
-                "castorini/mdpr-tied-pft-msmarco",
+                "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/query_model",
+                "/srv/upadro/models/all/dual/2024-10-28__dual__all__not_translated__castorini_mdpr-tied-pft-msmarco_training/_final_model/ctx_model",
                 "final_new_graph_expts_no_norm_base_prev_next_2_topics_bipartite",
                 {
                     "use_topics": True,
                     "use_cosine": False,
-                    "use_prev_next_two": True,
-                    "use_topic_threshold": False,
+                    "use_prev_next_two": False,
+                    "use_topic_threshold": True,
                 }
             ],
             
@@ -689,12 +698,12 @@ if __name__ == "__main__":
                                 train_data_folder=train_data_folder,
                                 val_data_folder=val_data_folder,
                                 config_file=config_file,
-                                device_str='cuda:2',
+                                device_str='cuda:1',
                                 dual_encoders=dual_encoder,
                                 language=language,
                                 batch_size=4,
                                 epochs=40,
-                                lr=2e-5, #2e-5 or 1e-5 TODO
+                                lr=1e-5, #2e-5 or 1e-5 TODO
                                 save_checkpoints=True,
                                 step_validation=False,
                                 query_model_name_or_path=model[0],

@@ -379,7 +379,7 @@ class GraphTrainer:
             data.num_topics = 0
         return data
 
-    def visualize_graph(self, data, file_name="src/models/graph_learning/train/graph.png"):
+    def visualize_graph(self, data, folder_name="src/models/graph_learning/train"):
         """
         Convert a PyTorch Geometric Data object to a NetworkX graph and visualize it with better separation.
         """
@@ -389,7 +389,7 @@ class GraphTrainer:
 
         G = to_networkx(data, to_undirected=True)
         
-        pos = nx.spring_layout(G)
+        pos = nx.spring_layout(G, seed=42, k=1.5, iterations=100)
         
         plt.figure(figsize=(12, 12))
         nx.draw(
@@ -404,7 +404,9 @@ class GraphTrainer:
             alpha=0.9
         )
         plt.title("Graph Visualization", fontsize=15)
-        plt.savefig(file_name, dpi=300, bbox_inches='tight')
+        # file_name = "cosine" if self.use_cosine else ("neighbour" if self.use_prev_next_two else ("topic_threshold" if (self.use_topics and self.use_threshold) else "topic_bipartite"))
+        file_name = f"graph_neighbour_5.png"
+        plt.savefig(os.path.join(folder_name, file_name), dpi=300, bbox_inches='tight')
         plt.show()
 
         
@@ -608,7 +610,7 @@ class GraphTrainer:
 if __name__ == "__main__":
     # languages = ["russian", "english", "french", "italian", "romanian", "turkish", "ukrainian"]
     # languages = ["russian", "french", "italian", "romanian", "turkish", "ukrainian"]
-    languages = ["all"]
+    languages = ["test"]
     for language in languages:
         # dual_encoders = [False, True]
         dual_encoders = [True]

@@ -1,0 +1,7 @@
+single_encoder:
+  model_name_or_path: bert-base-multilingual-cased
+  save_path: model_output/{date_of_training}_training/
+dual_encoder:
+  query_model_name_or_path: bert-base-multilingual-cased
+  doc_model_name_or_path: bert-base-multilingual-cased
+  save_path: model_output/{date_of_training}_training/
