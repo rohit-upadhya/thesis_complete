@@ -269,12 +269,6 @@ class GraphTrainer:
     
     
     def _build_graph(self, paragraph_encodings, paragraphs):
-        """
-        Builds a graph with various edge creation strategies:
-        - Fully connected graph (use_all=True)
-        - BM25-based top-k neighbors (use_bm25=True)
-        - Cosine similarity-based top-k neighbors (use_cosine=True)
-        """
         node_features = paragraph_encodings
         num_paragraphs = len(paragraph_encodings)
         edge_index = []

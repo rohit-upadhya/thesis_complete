@@ -61,7 +61,6 @@ class GraphTrainer:
         self.use_translations = use_translations
         self.num_negatives = num_negatives
 
-        # Initialize other attributes
         self.current_date = current_date()
         self.input_loader = InputLoader()
 
@@ -126,7 +125,6 @@ class GraphTrainer:
         datapoint_map = []
 
         for idx, datapoint in enumerate(training_datapoints):
-            # Convert paragraph encodings into tensors for gradient flow
             paragraph_encodings = torch.tensor(
                 datapoint["encoded_paragraphs"], device=self.device, dtype=torch.float, requires_grad=True
             ).clone()
@@ -134,12 +132,10 @@ class GraphTrainer:
             batched_graphs.append(graph)
             datapoint_map.append(idx)
 
-            # Process the batch when it's full or at the end of datapoints
             if len(batched_graphs) == batch_size or idx == len(training_datapoints) - 1:
                 batch = Batch.from_data_list(batched_graphs).to(self.device)
                 batched_graphs = []
 
-                # Pass the batch through the GNN model
                 updated_batch = gnn_model(batch)
 
                 start_idx = 0
@@ -147,13 +143,11 @@ class GraphTrainer:
                     num_nodes = original_graph.x.shape[0]
                     end_idx = start_idx + num_nodes
 
-                    # Decouple gradients by explicitly creating unique paths for each encoding
                     updated_encodings = updated_batch.x[start_idx:end_idx]
                     # duplicated_encodings = [updated_encodings[i:i + 1] for i in range(num_nodes)]
 
                     start_idx = end_idx
 
-                    # Assign unique encodings for each node
                     datapoint_index = datapoint_map[graph_idx]
                     training_datapoints[datapoint_index]["updated_paragraph_encodings"] = updated_encodings
 
@@ -381,7 +375,6 @@ class GraphTrainer:
         total_loss = 0
         random.shuffle(final_training_datapoints)
         
-        # Create batches
         num_batches = len(final_training_datapoints) // batch_size
         if len(final_training_datapoints) % batch_size != 0:
             num_batches += 1
@@ -392,35 +385,30 @@ class GraphTrainer:
                 batch_end = min(batch_start + batch_size, len(final_training_datapoints))
                 batch = final_training_datapoints[batch_start:batch_end]
                 
-                # Aggregate tensors for the batch
                 query_tensors = []
                 positive_tensors = []
                 negative_tensors = []
                 
                 for item in batch:
-                    query_tensors.append(item["query"].unsqueeze(0))  # Shape [1, feature_dim]
-                    positive_tensors.append(item["positive"].unsqueeze(0))  # Shape [1, feature_dim]
-                    negative_tensors.extend([neg.unsqueeze(0) for neg in item["negatives"]])  # Flatten negatives
+                    query_tensors.append(item["query"].unsqueeze(0))  
+                    positive_tensors.append(item["positive"].unsqueeze(0))
+                    negative_tensors.extend([neg.unsqueeze(0) for neg in item["negatives"]])
                 
-                # Combine queries, positives, and negatives into tensors
-                query_tensor = torch.cat(query_tensors, dim=0)  # Shape [batch_size, feature_dim]
-                positive_tensor = torch.cat(positive_tensors, dim=0)  # Shape [batch_size, feature_dim]
-                negatives_tensor = torch.stack(negative_tensors).view(len(batch), -1, query_tensors[0].shape[-1])  # Shape [batch_size, num_negatives, feature_dim]
+                query_tensor = torch.cat(query_tensors, dim=0) 
+                positive_tensor = torch.cat(positive_tensors, dim=0) 
+                negatives_tensor = torch.stack(negative_tensors).view(len(batch), -1, query_tensors[0].shape[-1])
                 
-                # Concatenate positive and negatives for each data point
-                all_paragraphs = torch.cat([positive_tensor.unsqueeze(1), negatives_tensor], dim=1)  # Shape [batch_size, num_negatives + 1, feature_dim]
+                all_paragraphs = torch.cat([positive_tensor.unsqueeze(1), negatives_tensor], dim=1)
                 
-                # Compute cosine similarities
                 similarity_scores = torch.nn.functional.cosine_similarity(
                     query_tensor.unsqueeze(1), all_paragraphs, dim=-1
-                )  # Shape [batch_size, num_negatives + 1]
-                
-                # Prepare logits and labels
+                )  
+
                 logits = similarity_scores
-                labels = torch.zeros(logits.size(0), dtype=torch.long, device=self.device)  # First index is the positive
+                labels = torch.zeros(logits.size(0), dtype=torch.long, device=self.device) 
                 
                 optimizer.zero_grad()
-                loss = criterion(logits, labels)  # Cross-entropy loss
+                loss = criterion(logits, labels)
                 loss.backward()
                 optimizer.step()
                 

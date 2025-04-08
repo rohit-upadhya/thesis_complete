@@ -50,7 +50,6 @@ class ContrastiveTrainer:
         self.setup_logging(log_file_name)
     
     def setup_logging(self, log_file_name):
-        # Configure the logger
         logging.basicConfig(
             filename=log_file_name,
             filemode='w',
@@ -126,20 +125,16 @@ class ContrastiveTrainer:
         'query_input_ids', 'query_attention_mask', 'paragraph_input_ids', 'paragraph_attention_mask', 'labels'
         """
 
-        # Initialize lists to collect data across the batch
         batch_query_input_ids = []
         batch_query_attention_mask = []
         batch_paragraph_input_ids = []
         batch_paragraph_attention_mask = []
         batch_labels = []
 
-        # For each item in the batch
         for item in batch:
-            # Since all examples in the item share the same query, we take the query from the first example
             query_input_ids = item[0]['query_input_ids']
             query_attention_mask = item[0]['query_attention_mask']
 
-            # Collect paragraph data and labels from all examples in the item
             paragraph_input_ids_list = []
             paragraph_attention_mask_list = []
             labels_list = []
@@ -149,26 +144,22 @@ class ContrastiveTrainer:
                 paragraph_attention_mask_list.append(example['paragraph_attention_mask'])
                 labels_list.append(example['labels'])
 
-            # Stack the paragraph tensors for this item (shape: [num_examples, seq_length])
-            paragraph_input_ids = torch.stack(paragraph_input_ids_list)  # Shape: [8, seq_length]
-            paragraph_attention_mask = torch.stack(paragraph_attention_mask_list)  # Shape: [8, seq_length]
-            labels = torch.tensor(labels_list)  # Shape: [8]
+            paragraph_input_ids = torch.stack(paragraph_input_ids_list)
+            paragraph_attention_mask = torch.stack(paragraph_attention_mask_list)
+            labels = torch.tensor(labels_list)
 
-            # Append the data to the batch lists
             batch_query_input_ids.append(query_input_ids)
             batch_query_attention_mask.append(query_attention_mask)
             batch_paragraph_input_ids.append(paragraph_input_ids)
             batch_paragraph_attention_mask.append(paragraph_attention_mask)
             batch_labels.append(labels)
 
-        # Now stack the batch lists to create tensors
-        batch_query_input_ids = torch.stack(batch_query_input_ids)  # Shape: [batch_size, seq_length]
-        batch_query_attention_mask = torch.stack(batch_query_attention_mask)  # Shape: [batch_size, seq_length]
-        batch_paragraph_input_ids = torch.stack(batch_paragraph_input_ids)  # Shape: [batch_size, 8, seq_length]
-        batch_paragraph_attention_mask = torch.stack(batch_paragraph_attention_mask)  # Shape: [batch_size, 8, seq_length]
-        batch_labels = torch.stack(batch_labels)  # Shape: [batch_size, 8]
+        batch_query_input_ids = torch.stack(batch_query_input_ids)
+        batch_query_attention_mask = torch.stack(batch_query_attention_mask)
+        batch_paragraph_input_ids = torch.stack(batch_paragraph_input_ids)
+        batch_paragraph_attention_mask = torch.stack(batch_paragraph_attention_mask)
+        batch_labels = torch.stack(batch_labels)
 
-        # Return the batch in dictionary form
         return {
             'query_input_ids': batch_query_input_ids,
             'query_attention_mask': batch_query_attention_mask,
@@ -224,11 +215,9 @@ class ContrastiveTrainer:
     def train(self):
         self.logger.info(f"Using device: {self.device}")
 
-        # Load training and validation data
         train_examples = self._load_data(self.train_data_folder)
         val_examples = self._load_data(self.val_data_folder)
         
-        # Load tokenizers based on whether dual encoders are used
         if self.dual_encoders:
             query_tokenizer = self._load_tokenizer(self.config['query_model_name_or_path'])
             paragraph_tokenizer = self._load_tokenizer(self.config['doc_model_name_or_path'])
@@ -239,11 +228,9 @@ class ContrastiveTrainer:
             train_dataset = DualEncoderDataset(train_examples, tokenizer, tokenizer)
             val_dataset = DualEncoderDataset(val_examples, tokenizer, tokenizer)
         
-        # Create contrastive data points for training and validation
         train_dataset = self._create_contrastive_datapoints(train_dataset, self.individual_datapoints)
         val_dataset = self._create_contrastive_datapoints(val_dataset, self.individual_datapoints)
         
-        # DataLoader with custom collate function for batching
         train_dataloader = DataLoader(
             dataset=train_dataset,
             batch_size=self.batch_size,
@@ -257,36 +244,30 @@ class ContrastiveTrainer:
             collate_fn=self.collate_fn
         )
 
-        # Load the model
         model = self._load_model()
         
-        # Optimizer and loss function
         optimizer = optim.AdamW(model.parameters(), lr=self.lr, weight_decay=1e-5)
         w_positive = 5.0
         w_negative = 1.0
         class_weights = torch.tensor([w_positive, w_negative]).to(self.device)
         class_weights = torch.full((self.individual_datapoints,), w_negative).to(self.device)
-        class_weights[0] = w_positive  # Assign higher weight to the positive class
+        class_weights[0] = w_positive
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-        # No need for log_softmax; CrossEntropyLoss includes log_softmax internally
 
-        val_steps = self.config.get('val_steps', 1500)  # Validation step frequency
+        val_steps = self.config.get('val_steps', 1500)
         global_step = 0
         
-        # Training loop
         for epoch in tqdm(range(self.epochs), desc="Epochs"):
             model.train()
             total_loss = 0
             for batch_idx, batch in enumerate(tqdm(train_dataloader, desc="Training Batches")):
                 optimizer.zero_grad()
 
-                # Move input tensors to the correct device
                 query_input_ids = batch['query_input_ids'].to(self.device)
                 query_attention_mask = batch['query_attention_mask'].to(self.device)
                 paragraph_input_ids = batch['paragraph_input_ids'].to(self.device)
                 paragraph_attention_mask = batch['paragraph_attention_mask'].to(self.device)
                 
-                # Forward pass: compute logits
                 logits = model(
                     query_input_ids,
                     query_attention_mask,
@@ -295,17 +276,10 @@ class ContrastiveTrainer:
                 )
                 logits = logits - logits.max(dim=1, keepdim=True)[0]
                 probabilities = F.softmax(logits, dim=1)
-                # print(f"Batch {batch_idx + 1} - Logits:\n", logits)
-                # print(f"Batch {batch_idx + 1} - Probabilities:\n", probabilities)
-                # logits shape: [batch_size, num_examples]
+                targets = torch.zeros(logits.size(0), dtype=torch.long).to(self.device)
 
-                # Targets are zeros because the positive example is at index 0
-                targets = torch.zeros(logits.size(0), dtype=torch.long).to(self.device)  # Shape: [batch_size]
-
-                # Compute loss
                 loss = criterion(logits, targets)
 
-                # Backpropagation
                 total_loss += loss.item()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -313,19 +287,15 @@ class ContrastiveTrainer:
 
                 global_step += 1
 
-                # Step validation if required
                 if global_step % val_steps == 0 and self.step_validation:
                     self.validate(model, val_dataloader, criterion, is_step=True)
 
-            # Average training loss for the epoch
             avg_train_loss = total_loss / len(train_dataloader)
             print(f"Epoch {epoch + 1}, Training Loss: {avg_train_loss}")
             self.logger.info(f"Epoch {epoch + 1}, Training Loss: {avg_train_loss}")
 
-            # Validation at the end of each epoch
             self.validate(model, val_dataloader, criterion, is_step=False)
 
-            # Save model checkpoints if required
             if self.save_checkpoints:
                 model_dir = self.config['save_path'].format(
                     date_of_training=current_date(),
@@ -347,7 +317,6 @@ class ContrastiveTrainer:
                         tokenizer=tokenizer
                     )
 
-        # Final model saving
         model_dir = self.config["save_path"].format(
             date_of_training=current_date(),
             mode=self.encoding_type,
@@ -369,41 +338,33 @@ class ContrastiveTrainer:
             )
 
     def validate(self, model, val_dataloader, criterion, is_step):
-        model.eval()  # Set model to evaluation mode
+        model.eval()
         total_val_loss = 0
         correct_predictions = 0
         total_predictions = 0
 
-        with torch.no_grad():  # No need to calculate gradients during validation
+        with torch.no_grad():
             for batch in tqdm(val_dataloader, desc="Validation Batches"):
-                # Move inputs to the appropriate device
                 query_input_ids = batch['query_input_ids'].to(self.device)
                 query_attention_mask = batch['query_attention_mask'].to(self.device)
                 paragraph_input_ids = batch['paragraph_input_ids'].to(self.device)
                 paragraph_attention_mask = batch['paragraph_attention_mask'].to(self.device)
 
-                # Forward pass: compute logits
                 logits = model(
                     query_input_ids,
                     query_attention_mask,
                     paragraph_input_ids,
                     paragraph_attention_mask
                 )
-                # logits shape: [batch_size, num_examples]
+                targets = torch.zeros(logits.size(0), dtype=torch.long).to(self.device)
 
-                # Targets are zeros because the positive example is at index 0
-                targets = torch.zeros(logits.size(0), dtype=torch.long).to(self.device)  # Shape: [batch_size]
-
-                # Compute loss
                 loss = criterion(logits, targets)
                 total_val_loss += loss.item()
 
-                # Predictions
-                predictions = logits.argmax(dim=1)  # Shape: [batch_size]
+                predictions = logits.argmax(dim=1)
                 correct_predictions += (predictions == targets).sum().item()
                 total_predictions += targets.size(0)
 
-        # Calculate average validation loss and accuracy
         avg_val_loss = total_val_loss / len(val_dataloader)
         accuracy = correct_predictions / total_predictions
 

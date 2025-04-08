@@ -51,7 +51,6 @@ class ContrastiveTrainer:
         self.setup_logging(log_file_name)
     
     def setup_logging(self, log_file_name):
-        # Configure the logger
         logging.basicConfig(
             filename=log_file_name,
             filemode='w',
@@ -125,7 +124,6 @@ class ContrastiveTrainer:
         # random.shuffle(train_examples)
         # random.shuffle(val_examples)
 
-        # Initialize tokenizers and datasets
         if self.dual_encoders:
             query_tokenizer = self.tokenizer(self.config['query_model_name_or_path'])
             paragraph_tokenizer = self.tokenizer(self.config['doc_model_name_or_path'])
@@ -142,7 +140,6 @@ class ContrastiveTrainer:
         train_dataloader = DataLoader(train_dataset, batch_sampler=train_sampler)
         val_dataloader = DataLoader(val_dataset, batch_sampler=val_sampler)
         
-        # Initialize the model (single or dual encoder)
         if self.dual_encoders:
             query_model = BertModel.from_pretrained(self.config['query_model_name_or_path'])
             paragraph_model = BertModel.from_pretrained(self.config['doc_model_name_or_path'])
@@ -160,9 +157,8 @@ class ContrastiveTrainer:
 
         self.logger.info(f"Model initialized: {model}")
 
-        # Replace NLLLoss with BCEWithLogitsLoss
         optimizer = optim.AdamW(model.parameters(), lr=self.lr, weight_decay=0)
-        # criterion = torch.nn.BCEWithLogitsLoss()  # <-- Updated loss function
+        # criterion = torch.nn.BCEWithLogitsLoss()
         criterion = torch.nn.NLLLoss()
         log_softmax = torch.nn.LogSoftmax(dim=1)
         val_steps = self.config.get('val_steps', 20)
@@ -176,32 +172,27 @@ class ContrastiveTrainer:
                 # print(f"Batch size (query_input_ids): {batch['query_input_ids'].shape[0]}")
                 # optimizer.zero_grad()
 
-                # Move input tensors to the correct device
                 query_input_ids = batch['query_input_ids'].to(device)
                 query_attention_mask = batch['query_attention_mask'].to(device)
                 paragraph_input_ids = batch['paragraph_input_ids'].to(device)
                 paragraph_attention_mask = batch['paragraph_attention_mask'].to(device)
                 
-                # Only the first example in the batch is correct (positive), others are negative
                 batch_size = query_input_ids.size(0)
                 labels = torch.zeros(batch_size, dtype=torch.float32).to(device)
-                labels[0] = 1  # The first item in the batch is the positive example
-                
-                # Forward pass: compute cosine similarity
+                labels[0] = 1
+
                 outputs = model(query_input_ids, query_attention_mask, paragraph_input_ids, paragraph_attention_mask)
                 log_probs = log_softmax(outputs.squeeze(-1).unsqueeze(0))
                 # outputs = model(**batch)
-                # Use BCEWithLogitsLoss directly on the cosine similarity outputs
                 # loss = criterion(outputs, labels)
                 # loss = criterion(log_probs, torch.zeros(self.batch_size, dtype=torch.long).to(self.device)) 
                 loss = criterion(log_probs, torch.zeros(1, dtype=torch.long).to(self.device)) 
                 total_loss += loss.item()
-                # Backpropagation
                 loss.backward()
                 optimizer.step()
 
                 if (step + 1) % accumulation_steps == 0:
-                    optimizer.step()  # Perform a gradient update
+                    optimizer.step()
                     optimizer.zero_grad()
                     
                 global_step += 1
@@ -213,10 +204,8 @@ class ContrastiveTrainer:
             print(f"Epoch {epoch + 1}, Training Loss: {avg_train_loss}")
             self.logger.info(f"Epoch {epoch + 1}, Training Loss: {avg_train_loss}")
 
-            # Validation step at the end of each epoch
             self.validate(model, val_dataloader, device, criterion, is_step=False)
 
-            # Save model checkpoints if required
             if self.save_checkpoints:
                 model_dir = f"{self.config['save_path'].format(date_of_training=current_date(), mode=self.encoding_type, language=self.language)}"
                 if self.dual_encoders:
@@ -224,7 +213,6 @@ class ContrastiveTrainer:
                 else:
                     self.save_single_model(model_dir=os.path.join(model_dir, "checkpoints", f"epoch_{epoch + 1}"), model=single_model, tokenizer=tokenizer)
 
-        # Final model saving
         model_dir = self.config["save_path"].format(date_of_training=current_date(), mode=self.encoding_type, language=self.language)  # type: ignore
         if self.dual_encoders:
             self.save_dual_model(model_dir=os.path.join(model_dir, "_adapter"), query_model=model.query_model, paragraph_model=model.paragraph_model, query_tokenizer=query_tokenizer, paragraph_tokenizer=paragraph_tokenizer)
@@ -232,35 +220,29 @@ class ContrastiveTrainer:
             self.save_single_model(model_dir=os.path.join(model_dir, "_adapter"), model=single_model, tokenizer=tokenizer)
 
     def validate(self, model, val_dataloader, device, criterion, is_step):
-        model.eval()  # Set model to evaluation mode
+        model.eval()
         total_val_loss = 0
         correct_predictions = 0
         total_predictions = 0
         log_softmax = torch.nn.LogSoftmax(dim=1)
 
-        with torch.no_grad():  # No need to calculate gradients during validation
+        with torch.no_grad():
             for batch in tqdm(val_dataloader):
-                # Move inputs to the appropriate device
                 query_input_ids = batch['query_input_ids'].to(device)
                 query_attention_mask = batch['query_attention_mask'].to(device)
                 paragraph_input_ids = batch['paragraph_input_ids'].to(device)
                 paragraph_attention_mask = batch['paragraph_attention_mask'].to(device)
                 labels = batch['labels'].to(device).float()
 
-                # Forward pass: compute the cosine similarity
                 outputs = model(query_input_ids, query_attention_mask, paragraph_input_ids, paragraph_attention_mask)
                 
-                # Calculate loss using BCEWithLogitsLoss directly (just like in training)
-                # loss = criterion(outputs, labels)
                 loss = criterion(log_softmax(outputs.squeeze(-1).unsqueeze(0)), torch.zeros(1,dtype=int).to(device)) # type: ignore
                 total_val_loss += loss.item()
 
-                # Convert logits to probabilities using sigmoid and compute predictions
                 predictions = torch.sigmoid(outputs) > 0.5
                 correct_predictions += (predictions == labels).sum().item()
                 total_predictions += labels.size(0)
 
-        # Calculate average validation loss and accuracy
         avg_val_loss = total_val_loss / len(val_dataloader)
         accuracy = correct_predictions / total_predictions
 

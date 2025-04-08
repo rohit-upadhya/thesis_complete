@@ -254,10 +254,9 @@ class Inference:
         for idx, (src, dst) in enumerate(edge_index):
             if (src, dst) in G.edges():
                 edge_labels[(src, dst)] = f"{edge_weights[idx]:.2f}"
-            if (dst, src) in G.edges():  # Add for undirected case
+            if (dst, src) in G.edges(): 
                 edge_labels[(dst, src)] = f"{edge_weights[idx]:.2f}"
 
-        # Draw edge labels
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
 
         plt.title("Graph Visualization with Edge Weights")

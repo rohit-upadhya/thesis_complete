@@ -44,5 +44,5 @@ class FaissVectorDB:
         faiss.normalize_L2(query)
 
         distances, ann = self.index.search(query, k=self.index.ntotal)  # type: ignore
-        relevant_paragraph_keys = [idx for idx in ann[0]]  # Now simply return indices
+        relevant_paragraph_keys = [idx for idx in ann[0]]
         return relevant_paragraph_keys

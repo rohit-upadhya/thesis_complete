@@ -201,21 +201,15 @@ class Inference:
         return data
     
     def visualize_graph(self, data, file_name="src/models/graph_learning/train/graph.png"):
-        """
-        Convert a PyTorch Geometric Data object to a NetworkX graph and visualize it,
-        ensuring correct edge weight mapping.
-        """
         import matplotlib.pyplot as plt  # type: ignore
         import networkx as nx # type: ignore
         from torch_geometric.utils import to_networkx # type: ignore
 
-        # Convert the graph to NetworkX
         G = to_networkx(data, to_undirected=True)
 
         plt.figure(figsize=(8, 8))
-        pos = nx.spring_layout(G, seed=42)  # Layout for positioning nodes
+        pos = nx.spring_layout(G, seed=42)
 
-        # Draw nodes
         nx.draw(
             G,
             pos,
@@ -228,18 +222,16 @@ class Inference:
             alpha=0.9
         )
 
-        # Map edge weights to edges explicitly
-        edge_weights = data.edge_attr.cpu().numpy()  # Ensure edge_attr is on CPU
-        edge_index = data.edge_index.cpu().numpy().T  # Convert edge_index to numpy for mapping
+        edge_weights = data.edge_attr.cpu().numpy() 
+        edge_index = data.edge_index.cpu().numpy().T 
         edge_labels = {}
 
         for idx, (src, dst) in enumerate(edge_index):
             if (src, dst) in G.edges():
                 edge_labels[(src, dst)] = f"{edge_weights[idx]:.2f}"
-            if (dst, src) in G.edges():  # Add for undirected case
+            if (dst, src) in G.edges():
                 edge_labels[(dst, src)] = f"{edge_weights[idx]:.2f}"
 
-        # Draw edge labels
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
 
         plt.title("Graph Visualization with Edge Weights")
@@ -361,9 +353,6 @@ class Inference:
         return recall
 
     def _load_model(self, model_path, hidden_dim, graph_model_type="gat"):
-        """
-        Load the trained graph model from a saved state dict.
-        """
         if graph_model_type == "gat":
             model = ParagraphGATInference(hidden_dim=hidden_dim)
         else:

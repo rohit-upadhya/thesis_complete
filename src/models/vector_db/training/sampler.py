@@ -53,24 +53,18 @@ class BatchSampler(BatchSampler):
                 continue
             
             for pos in pos_samples:
-                # Add positive sample
                 batch = [pos]
                 
-                # Add negative samples (either all or as many as needed)
                 if len(neg_samples) >= self.batch_size - 1:
                     batch += neg_samples[:self.batch_size - 1]
                 else:
                     batch += neg_samples
-                    # Add additional negatives (allow replacement to ensure batch size)
                     while len(batch) < self.batch_size:
                         batch.append(np.random.choice(neg_samples))
                 
-                # Now ensure the batch size is exactly batch_size
                 if len(batch) > self.batch_size:
                     batch = batch[:self.batch_size]
                 
-                # Yield the batch
-                # print("Batch size inside batching: ", len(batch))  # Debugging statement
                 yield batch
     
     def __len__(self):

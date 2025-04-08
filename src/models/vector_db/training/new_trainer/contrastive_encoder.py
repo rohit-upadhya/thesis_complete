@@ -11,24 +11,20 @@ class ContrastiveModel(nn.Module):
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, query_inputs, pos_inputs, neg_inputs):
-    # Process query
         query_output = self.encoder(
             input_ids=query_inputs['input_ids'],
             attention_mask=query_inputs['attention_mask']
         )
-        query_embedding = self.dropout(query_output.pooler_output)  # Shape: [batch_size, hidden_size]
+        query_embedding = self.dropout(query_output.pooler_output) 
 
-        # Process positive samples
         pos_output = self.encoder(
             input_ids=pos_inputs['input_ids'],
             attention_mask=pos_inputs['attention_mask']
         )
-        pos_embedding = self.dropout(pos_output.pooler_output)  # Shape: [batch_size, hidden_size]
+        pos_embedding = self.dropout(pos_output.pooler_output)
 
-        # Process negative samples
         batch_size, num_negatives, seq_length = neg_inputs['input_ids'].shape
 
-        # Flatten negatives to process them together
         neg_input_ids = neg_inputs['input_ids'].view(batch_size * num_negatives, seq_length)
         neg_attention_mask = neg_inputs['attention_mask'].view(batch_size * num_negatives, seq_length)
 
@@ -36,17 +32,14 @@ class ContrastiveModel(nn.Module):
             input_ids=neg_input_ids,
             attention_mask=neg_attention_mask
         )
-        neg_embedding = self.dropout(neg_output.pooler_output)  # Shape: [batch_size * num_negatives, hidden_size]
+        neg_embedding = self.dropout(neg_output.pooler_output)
 
-        # Reshape back to [batch_size, num_negatives, hidden_size]
         neg_embedding = neg_embedding.view(batch_size, num_negatives, -1)
 
-        # Combine embeddings
-        pos_embedding = pos_embedding.unsqueeze(1)  # Shape: [batch_size, 1, hidden_size]
-        embeddings = torch.cat([pos_embedding, neg_embedding], dim=1)  # Shape: [batch_size, 1 + num_negatives, hidden_size]
+        pos_embedding = pos_embedding.unsqueeze(1) 
+        embeddings = torch.cat([pos_embedding, neg_embedding], dim=1)  
 
-        # Compute cosine similarity
-        query_embedding = query_embedding.unsqueeze(1)  # Shape: [batch_size, 1, hidden_size]
-        similarities = F.cosine_similarity(query_embedding, embeddings, dim=-1)  # Shape: [batch_size, 1 + num_negatives]
+        query_embedding = query_embedding.unsqueeze(1) 
+        similarities = F.cosine_similarity(query_embedding, embeddings, dim=-1)  
 
-        return similarities  # Return similarities as logits
+        return similarities 

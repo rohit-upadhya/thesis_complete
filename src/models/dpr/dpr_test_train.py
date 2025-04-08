@@ -29,13 +29,11 @@ encoded_dataset.set_format(type='torch', columns=['input_ids_question', 'attenti
 
 train_dataloader = DataLoader(encoded_dataset, batch_size=8, shuffle=True)
 
-# Load models and optimizer
 question_encoder = DPRQuestionEncoder.from_pretrained("facebook/dpr-question_encoder-single-nq-base").to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 context_encoder = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base").to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
 optimizer = AdamW(list(question_encoder.parameters()) + list(context_encoder.parameters()), lr=2e-5)
 
-# Training loop
 num_epochs = 3
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
