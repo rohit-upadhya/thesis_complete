@@ -254,10 +254,9 @@ class GraphTrainer:
             for item in positive:
                 batch = []
                 batch.append(item)
-                batch.extend(random.sample(negative, 7))  # Assuming you always want 7 negatives
+                batch.extend(random.sample(negative, 7)) 
                 temp_batches.append(batch)
 
-        # Create a list of lists with each sublist containing 8 elements
         final_batches = [temp_batches[i:i + self.batch_size] for i in range(0, len(temp_batches), self.batch_size)]
 
         return final_batches
